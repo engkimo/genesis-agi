@@ -1,0 +1,37 @@
+[project]
+name = "genesis-agi"
+version = "0.1.0"
+description = "BabyAGIにインスパイアされた、タスク管理・実行システム"
+requires-python = ">=3.9"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.ruff]
+line-length = 88
+target-version = "py39"
+select = [
+    "E",  # pycodestyle errors
+    "W",  # pycodestyle warnings
+    "F",  # pyflakes
+    "I",  # isort
+    "B",  # flake8-bugbear
+    "C4", # flake8-comprehensions
+    "UP", # pyupgrade
+]
+ignore = []
+
+[tool.ruff.isort]
+known-first-party = ["genesis_agi"]
+
+[tool.mypy]
+python_version = "3.9"
+warn_return_any = true
+warn_unused_configs = true
+disallow_untyped_defs = true
+check_untyped_defs = true
+
+[tool.black]
+line-length = 88
+target-version = ['py39'] 
