@@ -1,0 +1,24 @@
+{
+    "python.analysis.typeCheckingMode": "basic",
+    "python.formatting.provider": "black",
+    "editor.formatOnSave": true,
+    "editor.codeActionsOnSave": {
+        "source.organizeImports": true,
+        "source.fixAll": true
+    },
+    "[python]": {
+        "editor.defaultFormatter": "ms-python.black-formatter",
+        "editor.formatOnSave": true,
+        "editor.codeActionsOnSave": {
+            "source.organizeImports": true
+        }
+    },
+    "python.linting.enabled": true,
+    "python.linting.mypyEnabled": true,
+    "python.linting.mypyArgs": [
+        "--follow-imports=silent",
+        "--ignore-missing-imports",
+        "--show-column-numbers",
+        "--no-pretty"
+    ]
+} 

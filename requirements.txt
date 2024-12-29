@@ -1,0 +1,10 @@
+typing-extensions>=4.5.0
+python-dotenv>=1.0.0
+pydantic>=2.0.0
+
+# Development dependencies
+uv>=0.1.12
+ruff>=0.1.9
+black>=23.12.1
+mypy>=1.8.0
+pytest>=7.4.3 
