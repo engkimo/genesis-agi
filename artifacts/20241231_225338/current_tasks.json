@@ -1,0 +1,130 @@
+[
+  {
+    "id": "task-0a7f487d-3df3-48ad-b451-4efb7d2d64bf",
+    "name": "競合調査の実施",
+    "description": "同様のWebアプリケーションやサービスを調査し、競合他社の特徴や強みを把握する",
+    "priority": 4,
+    "metadata": {
+      "dependencies": [],
+      "estimated_time": "90",
+      "required_resources": [
+        "競合サービスの分析レポート",
+        "インターネットアクセス"
+      ],
+      "prioritization_reason": "競合調査は重要だが、要件定義や技術スタックの選定が優先される。"
+    }
+  },
+  {
+    "id": "task-8378d579-0b56-4e08-8069-56f1845ef93a",
+    "name": "技術スタックの選定",
+    "description": "使用するプログラミング言語やフレームワーク、データベースなどの技術スタックを選定する",
+    "priority": 2,
+    "metadata": {
+      "dependencies": [
+        "Webアプリケーションの要件定義"
+      ],
+      "estimated_time": "60",
+      "required_resources": [
+        "技術スタック比較表",
+        "技術スタック評価基準"
+      ],
+      "prioritization_reason": "技術スタックの選定は要件定義に依存しており、開発スケジュールに影響を与える可能性があるため。"
+    }
+  },
+  {
+    "id": "task-15a45e9c-212c-4883-8be4-8bd26827b7b9",
+    "name": "Webアプリケーションの要件定義",
+    "description": "利用者要件やシステム要件を収集し、Webアプリケーションの基本的な機能や仕様を定義する",
+    "priority": 3,
+    "metadata": {
+      "dependencies": [],
+      "estimated_time": "120",
+      "required_resources": [
+        "ユーザーインタビューのための資料",
+        "ワークショップのスペース"
+      ],
+      "prioritization_reason": "Webアプリケーションの要件定義に基づいて行うため、競合調査や技術スタックの選定よりも先に進める必要がある。"
+    }
+  },
+  {
+    "id": "task-64ef81e6-33e2-4fdc-8cb1-1a0009d22f95",
+    "name": "技術スタックの選定",
+    "description": "使用するプログラミング言語やフレームワーク、データベースなどの技術スタックを選定する",
+    "priority": 6,
+    "metadata": {
+      "dependencies": [
+        "Webアプリケーションの要件定義"
+      ],
+      "estimated_time": "60",
+      "required_resources": [
+        "技術スタック比較表",
+        "技術スタック評価基準"
+      ],
+      "prioritization_reason": "技術スタックの選定は要件定義に依存しているため、要件定義後に実施されるべき。"
+    }
+  },
+  {
+    "id": "task-cf57ed7e-c334-4e73-8360-0712f1702674",
+    "name": "Webアプリケーションの要件定義",
+    "description": "利用者要件やシステム要件を収集し、Webアプリケーションの基本的な機能や仕様を定義する",
+    "priority": 1,
+    "metadata": {
+      "estimated_time": "120",
+      "required_resources": [
+        "ユーザーインタビューのための資料",
+        "ワークショップのスペース"
+      ],
+      "prioritization_reason": "Webアプリケーションの要件定義は重要度と緊急度が高い。プロジェクトの基盤を築くため。"
+    }
+  },
+  {
+    "id": "task-969b160c-ef10-4e6b-89fb-07e4c70a2fd2",
+    "name": "技術スタックの選定",
+    "description": "使用するプログラミング言語やフレームワーク、データベースなどの技術スタックを選定する",
+    "priority": 7,
+    "metadata": {
+      "dependencies": [
+        "Webアプリケーションの要件定義"
+      ],
+      "estimated_time": "60",
+      "required_resources": [
+        "技術スタック比較表",
+        "技術スタック評価基準"
+      ],
+      "prioritization_reason": "技術スタックの選定は要件定義に依存しているため、要件定義後に実施されるべき。"
+    }
+  },
+  {
+    "id": "task-9eed5ac3-9f82-4d56-8699-e4cefaaf4770",
+    "name": "プロジェクトスケジュール作成",
+    "description": "Webアプリケーションの開発に必要なタスクや期間を考慮し、プロジェクトスケジュールを作成する",
+    "priority": 8,
+    "metadata": {
+      "dependencies": [
+        "Webアプリケーションの要件定義"
+      ],
+      "estimated_time": "120",
+      "required_resources": [
+        "プロジェクト管理ツール",
+        "開発チームのスケジュール調整"
+      ],
+      "prioritization_reason": "プロジェクトスケジュール作成は要件定義に依存しており、開発タスクの進行に影響を与えるため、要件定義後に行うべき。"
+    }
+  },
+  {
+    "id": "task-ff379777-7cd9-4f95-9009-7891beb7e318",
+    "name": "競合調査結果の分析",
+    "description": "競合調査の結果を活用して、自社のWebアプリケーションの戦略立案や改善計画を進める",
+    "priority": 5,
+    "metadata": {
+      "dependencies": [
+        "競合調査の実施"
+      ],
+      "estimated_time": "60",
+      "required_resources": [
+        "競合サービスの分析レポート"
+      ],
+      "prioritization_reason": "競合調査の結果を活用するためには、競合調査の実施と分析が先行して行われる必要がある。"
+    }
+  }
+]
