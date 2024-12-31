@@ -159,11 +159,13 @@ class TaskManager:
 
         # 優先順位の更新
         for task_data in result.get("prioritized_tasks", []):
-            task_id = task_data["task_id"]
-            for task in self.current_tasks:
-                if task.id == task_id:
-                    task.priority = task_data["priority"]
-                    break
+            task_id = task_data.get("id")  # idフィールドを使用
+            new_priority = task_data.get("priority")
+            if task_id and new_priority is not None:
+                for task in self.current_tasks:
+                    if task.id == task_id:
+                        task.priority = new_priority
+                        break
 
     def analyze_performance(self) -> Dict[str, Any]:
         """パフォーマンスを分析する。

@@ -63,7 +63,7 @@ class TaskPrioritizationOperator(BaseOperator):
 {{
     "prioritized_tasks": [
         {{
-            "task_id": "タスクID",
+            "id": "タスクID",
             "priority": 優先度（1-5）,
             "reason": "優先度を設定した理由"
         }}
@@ -84,7 +84,7 @@ class TaskPrioritizationOperator(BaseOperator):
         # タスクの優先順位を更新
         updated_tasks = []
         for task_info in result["prioritized_tasks"]:
-            task_id = task_info["task_id"]
+            task_id = task_info["id"]
             for task in task_list:
                 if task.id == task_id:
                     task.priority = task_info["priority"]
