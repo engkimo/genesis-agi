@@ -1,3 +1,4 @@
-from .base_operator import BaseOperator
+"""オペレーターモジュール。"""
+from genesis_agi.operators.base import BaseOperator, Task
 
-__all__ = ['BaseOperator'] 
+__all__ = ["BaseOperator", "Task"]

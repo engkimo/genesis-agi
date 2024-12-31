@@ -7,4 +7,18 @@ uv>=0.1.12
 ruff>=0.1.9
 black>=23.12.1
 mypy>=1.8.0
+pytest>=7.4.3
+
+# LLM dependencies
+openai>=1.6.1
+tiktoken>=0.5.2
+tenacity>=8.2.3  # リトライ処理用
+
+# Semantic search dependencies
+numpy>=1.24.0
+scikit-learn>=1.3.0  # 追加の機械学習機能のため
+
+# Cache dependencies
+redis>=5.0.1
+msgpack>=1.0.7  # 効率的なシリアライゼーション用 
 pytest>=7.4.3 
