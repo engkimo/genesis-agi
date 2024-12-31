@@ -1,7 +1,7 @@
 [project]
 name = "genesis-agi"
 version = "0.1.0"
-description = "BabyAGIライクな自己改善型タスク管理システム"
+description = "自己改善型タスク管理システム"
 authors = [{ name = "Your Name" }]
 dependencies = [
     "openai>=1.0.0",
