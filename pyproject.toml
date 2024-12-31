@@ -30,6 +30,8 @@ select = [
     "F",  # pyflakes
     "I",  # isort
     "B",  # flake8-bugbear
+    "C4", # flake8-comprehensions
+    "UP", # pyupgrade
 ]
 ignore = []
 
@@ -44,3 +46,14 @@ target-version = ["py39"]
 testpaths = ["tests"]
 python_files = ["test_*.py"]
 addopts = "-v --cov=genesis_agi"
+
+[tool.mypy]
+python_version = "3.9"
+warn_return_any = true
+warn_unused_configs = true
+disallow_untyped_defs = true
+check_untyped_defs = true
+
+[tool.black]
+line-length = 88
+target-version = ['py39'] 

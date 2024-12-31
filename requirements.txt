@@ -21,3 +21,4 @@ scikit-learn>=1.3.0  # 追加の機械学習機能のため
 # Cache dependencies
 redis>=5.0.1
 msgpack>=1.0.7  # 効率的なシリアライゼーション用 
+pytest>=7.4.3 
