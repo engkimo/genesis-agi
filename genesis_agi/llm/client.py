@@ -520,4 +520,151 @@ class LLMClient:
         ]
 
         response = self._call_openai(messages, temperature=0.7)
+        return self.parse_json_response(response)
+
+    def prioritize_tasks(self, context: Dict[str, Any]) -> Dict[str, Any]:
+        """タスクの優先順位付けを行う。
+
+        Args:
+            context: 優先順位付けのためのコンテキスト情報
+                - objective: システムの目標
+                - current_tasks: 現在のタスクリスト
+                - completed_tasks: 完了したタスクリスト
+                - execution_history: 実行履歴
+
+        Returns:
+            優先順位付けの結果
+        """
+        messages = [
+            {
+                "role": "system",
+                "content": (
+                    "あなたはタスクの優先順位付けを行う専門家です。"
+                    "提供されたタスクリストとコンテキストを分析し、"
+                    "各タスクの優先度を決定してください。\n\n"
+                    "応答は必ず以下のJSON形式で返してください：\n"
+                    "{\n"
+                    '  "priorities": [\n'
+                    "    {\n"
+                    '      "task_id": "タスクID",\n'
+                    '      "priority": 優先度（0-1の範囲）,\n'
+                    '      "reasoning": "優先度の理由"\n'
+                    "    },\n"
+                    "    ...\n"
+                    "  ],\n"
+                    '  "analysis": {\n'
+                    '    "dependencies": {"タスクID": ["依存タスクID", ...]},\n'
+                    '    "critical_path": ["タスクID", ...],\n'
+                    '    "bottlenecks": ["タスクID", ...]\n'
+                    "  }\n"
+                    "}"
+                ),
+            },
+            {
+                "role": "user",
+                "content": json.dumps(context, ensure_ascii=False, indent=2),
+            },
+        ]
+
+        response = self._call_openai(messages, temperature=0.3)
+        return self.parse_json_response(response)
+
+    def evaluate_objective_completion(self, context: Dict[str, Any]) -> Dict[str, Any]:
+        """目標の達成状況を評価する。
+
+        Args:
+            context: 評価のためのコンテキスト情報
+                - objective: システムの目標
+                - execution_history: 実行履歴
+                - performance_metrics: パフォーマンス指標
+
+        Returns:
+            評価結果
+        """
+        messages = [
+            {
+                "role": "system",
+                "content": (
+                    "あなたはAIシステムの目標達成状況を評価する専門家です。"
+                    "提供された目標、実行履歴、パフォーマンス指標を分析し、"
+                    "目標が達成されたかどうかを判断してください。\n\n"
+                    "応答は必ず以下のJSON形式で返してください：\n"
+                    "{\n"
+                    '  "is_achieved": true/false,\n'
+                    '  "completion_rate": 0.0-1.0,\n'
+                    '  "analysis": {\n'
+                    '    "completed_objectives": ["達成された目標1", ...],\n'
+                    '    "remaining_objectives": ["残りの目標1", ...],\n'
+                    '    "blockers": ["ブロッカー1", ...]\n'
+                    "  },\n"
+                    '  "recommendations": [\n'
+                    '    {\n'
+                    '      "action": "推奨アクション",\n'
+                    '      "priority": "high/medium/low",\n'
+                    '      "expected_impact": "期待される影響"\n'
+                    "    },\n"
+                    "    ...\n"
+                    "  ]\n"
+                    "}"
+                ),
+            },
+            {
+                "role": "user",
+                "content": json.dumps(context, ensure_ascii=False, indent=2),
+            },
+        ]
+
+        response = self._call_openai(messages, temperature=0.3)
+        return self.parse_json_response(response)
+
+    def suggest_new_tasks(self, prompt: Dict[str, Any]) -> Dict[str, Any]:
+        """新しいタスクを提案する。
+
+        Args:
+            prompt: タスク提案のためのプロンプト情報
+                - objective: システムの目標
+                - current_context: 現在のコンテキスト
+                - execution_history: 実行履歴
+
+        Returns:
+            提案されたタスクのリスト
+        """
+        messages = [
+            {
+                "role": "system",
+                "content": (
+                    "あなたはAIシステムのタスク生成の専門家です。"
+                    "システムの目標、現在のコンテキスト、実行履歴を分析し、"
+                    "次に実行すべき新しいタスクを提案してください。\n\n"
+                    "応答は必ず以下のJSON形式で返してください：\n"
+                    "{\n"
+                    '  "suggested_tasks": [\n'
+                    "    {\n"
+                    '      "description": "タスクの説明",\n'
+                    '      "operator_type": "使用するオペレーターの種類",\n'
+                    '      "priority": 優先度（0-1の範囲）,\n'
+                    '      "params": {\n'
+                    '        "param1": "値1",\n'
+                    '        "param2": "値2"\n'
+                    "      },\n"
+                    '      "expected_outcomes": ["期待される結果1", "期待される結果2"],\n'
+                    '      "dependencies": ["依存タスク1", "依存タスク2"]\n'
+                    "    },\n"
+                    "    ...\n"
+                    "  ],\n"
+                    '  "analysis": {\n'
+                    '    "current_progress": "現在の進捗状況の分析",\n'
+                    '    "gaps": ["未対応の領域1", "未対応の領域2"],\n'
+                    '    "opportunities": ["改善機会1", "改善機会2"]\n'
+                    "  }\n"
+                    "}"
+                ),
+            },
+            {
+                "role": "user",
+                "content": json.dumps(prompt, ensure_ascii=False, indent=2),
+            },
+        ]
+
+        response = self._call_openai(messages, temperature=0.7)
         return self.parse_json_response(response) 
