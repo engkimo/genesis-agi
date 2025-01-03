@@ -194,4 +194,138 @@ class LLMClient:
             strategy_name: 戦略名
             new_strategy: 新しい戦略
         """
-        self.context_manager.update_strategy(strategy_name, new_strategy) 
+        self.context_manager.update_strategy(strategy_name, new_strategy)
+
+    def optimize_generation_strategy(self, prompt: Dict[str, Any]) -> Dict[str, Any]:
+        """オペレーター生成戦略を最適化する。
+
+        Args:
+            prompt: 最適化のためのプロンプト
+
+        Returns:
+            最適化された生成戦略
+        """
+        messages = [
+            {
+                "role": "system",
+                "content": (
+                    "あなたはAIシステムのオペレーター生成戦略を最適化する専門家です。"
+                    "タスクの説明、コンテキスト、これまでの戦略の成功率を分析し、"
+                    "最適な生成戦略を提案してください。"
+                ),
+            },
+            {
+                "role": "user",
+                "content": json.dumps(prompt, ensure_ascii=False, indent=2),
+            },
+        ]
+
+        response = self._call_openai(messages, temperature=0.7)
+        return self.parse_json_response(response)
+
+    def generate_evolution_strategy(self, prompt: Dict[str, Any]) -> Dict[str, Any]:
+        """進化戦略を生成する。
+
+        Args:
+            prompt: 戦略生成のためのプロンプト
+
+        Returns:
+            生成された進化戦略
+        """
+        messages = [
+            {
+                "role": "system",
+                "content": (
+                    "あなたはAIシステムのオペレーター進化戦略を生成する専門家です。"
+                    "オペレーターの現在の状態、パフォーマンスデータ、コンテキストを分析し、"
+                    "最適な進化戦略を提案してください。"
+                ),
+            },
+            {
+                "role": "user",
+                "content": json.dumps(prompt, ensure_ascii=False, indent=2),
+            },
+        ]
+
+        response = self._call_openai(messages, temperature=0.7)
+        return self.parse_json_response(response)
+
+    def calculate_context_similarity(self, prompt: Dict[str, Any]) -> Dict[str, Any]:
+        """コンテキスト間の類似度を計算する。
+
+        Args:
+            prompt: 類似度計算のためのプロンプト
+
+        Returns:
+            類似度スコアを含む結果
+        """
+        messages = [
+            {
+                "role": "system",
+                "content": (
+                    "あなたは2つのコンテキスト間の意味的類似性を評価する専門家です。"
+                    "提供された2つのコンテキストを分析し、0から1の範囲で類似度スコアを算出してください。"
+                ),
+            },
+            {
+                "role": "user",
+                "content": json.dumps(prompt, ensure_ascii=False, indent=2),
+            },
+        ]
+
+        response = self._call_openai(messages, temperature=0.3)
+        return self.parse_json_response(response)
+
+    def calculate_pattern_similarity(self, prompt: Dict[str, Any]) -> Dict[str, Any]:
+        """パターン間の類似度を計算する。
+
+        Args:
+            prompt: 類似度計算のためのプロンプト
+
+        Returns:
+            類似度スコアを含む結果
+        """
+        messages = [
+            {
+                "role": "system",
+                "content": (
+                    "あなたは進化パターン間の類似性を評価する専門家です。"
+                    "提供された2つのパターン（状態とコンテキスト）を分析し、"
+                    "0から1の範囲で類似度スコアを算出してください。"
+                ),
+            },
+            {
+                "role": "user",
+                "content": json.dumps(prompt, ensure_ascii=False, indent=2),
+            },
+        ]
+
+        response = self._call_openai(messages, temperature=0.3)
+        return self.parse_json_response(response)
+
+    def analyze_evolution_pattern(self, prompt: Dict[str, Any]) -> Dict[str, Any]:
+        """進化パターンを分析する。
+
+        Args:
+            prompt: パターン分析のためのプロンプト
+
+        Returns:
+            分析結果
+        """
+        messages = [
+            {
+                "role": "system",
+                "content": (
+                    "あなたは進化パターンを分析する専門家です。"
+                    "提供されたパターンの初期状態、進化後の状態、パフォーマンス改善、"
+                    "およびコンテキストを分析し、パターンの特徴と効果を評価してください。"
+                ),
+            },
+            {
+                "role": "user",
+                "content": json.dumps(prompt, ensure_ascii=False, indent=2),
+            },
+        ]
+
+        response = self._call_openai(messages, temperature=0.5)
+        return self.parse_json_response(response) 

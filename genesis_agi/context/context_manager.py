@@ -1,5 +1,5 @@
 """コンテキストマネージャー。"""
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, Optional
 
 from genesis_agi.utils.cache import Cache
 from genesis_agi.utils.semantic_search import SemanticSearch
