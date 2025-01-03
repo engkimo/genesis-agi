@@ -221,39 +221,23 @@ class LLMClient:
         self.context_manager.update_strategy(strategy_name, new_strategy)
 
     def analyze_task(self, prompt: Dict[str, Any]) -> Dict[str, Any]:
-        """タスクを分析する。
-
-        Args:
-            prompt: タスク分析のためのプロンプト
-
-        Returns:
-            分析結果
-        """
+        """タスクを分析する。"""
         messages = [
             {
                 "role": "system",
                 "content": (
-                    "あなたはAIシステムのタスク分析の専門家です。"
-                    "提供されたタスクの説明とコンテキストを分析し、"
-                    "必要なオペレータータイプとパラメータを特定してください。\n\n"
-                    "応答は必ず以下のJSON形式で返してください：\n"
+                    "タスクを分析し、必要なオペレータータイプとパラメータを特定してください。"
+                    "応答は以下のJSON形式で返してください：\n"
                     "{\n"
-                    '  "required_operator_type": "必要なオペレーターの種類",\n'
-                    '  "required_params": {\n'
-                    '    "param1": "値1",\n'
-                    '    "param2": "値2"\n'
-                    "  },\n"
-                    '  "task_analysis": {\n'
-                    '    "complexity": "タスクの複雑さ（low/medium/high）",\n'
-                    '    "dependencies": ["依存するタスクやリソース"],\n'
-                    '    "expected_duration": "予想される実行時間（秒）"\n'
-                    "  }\n"
+                    '  "required_operator_type": "オペレータータイプ",\n'
+                    '  "required_params": {"param1": "値1"},\n'
+                    '  "task_analysis": {"complexity": "low/medium/high"}\n'
                     "}"
                 ),
             },
             {
                 "role": "user",
-                "content": json.dumps(prompt, ensure_ascii=False, indent=2),
+                "content": json.dumps(prompt, ensure_ascii=False)
             },
         ]
 
@@ -584,46 +568,26 @@ Pythonコードを生成してください。
         return self.parse_json_response(response)
 
     def prioritize_tasks(self, context: Dict[str, Any]) -> Dict[str, Any]:
-        """タスクの優先順位付けを行う。
-
-        Args:
-            context: 優先順位付けのためのコンテキスト情報
-                - objective: システムの目標
-                - current_tasks: 現在のタスクリスト
-                - completed_tasks: 完了したタスクリスト
-                - execution_history: 実行履歴
-
-        Returns:
-            優先順位付けの結果
-        """
+        """タスクの優先順位付けを行う。"""
         messages = [
             {
                 "role": "system",
                 "content": (
-                    "あなたはタスクの優先順位付けを行う専門家です。"
-                    "提供されたタスクリストとコンテキストを分析し、"
-                    "各タスクの優先度を決定してください。\n\n"
-                    "応答は必ず以下のJSON形式で返してください：\n"
+                    "タスクリストの優先順位を決定してください。"
+                    "応答は以下のJSON形式で返してください：\n"
                     "{\n"
                     '  "priorities": [\n'
                     "    {\n"
                     '      "task_id": "タスクID",\n'
-                    '      "priority": 優先度（0-1の範囲）,\n'
-                    '      "reasoning": "優先度の理由"\n'
-                    "    },\n"
-                    "    ...\n"
-                    "  ],\n"
-                    '  "analysis": {\n'
-                    '    "dependencies": {"タスクID": ["依存タスクID", ...]},\n'
-                    '    "critical_path": ["タスクID", ...],\n'
-                    '    "bottlenecks": ["タスクID", ...]\n'
-                    "  }\n"
+                    '      "priority": 1.0\n'
+                    "    }\n"
+                    "  ]\n"
                     "}"
                 ),
             },
             {
                 "role": "user",
-                "content": json.dumps(context, ensure_ascii=False, indent=2),
+                "content": json.dumps(context, ensure_ascii=False)
             },
         ]
 
@@ -631,47 +595,23 @@ Pythonコードを生成してください。
         return self.parse_json_response(response)
 
     def evaluate_objective_completion(self, context: Dict[str, Any]) -> Dict[str, Any]:
-        """目標の達成状況を評価する。
-
-        Args:
-            context: 評価のためのコンテキスト情報
-                - objective: システムの目標
-                - execution_history: 実行履歴
-                - performance_metrics: パフォーマンス指標
-
-        Returns:
-            評価結果
-        """
+        """目標の達成状況を評価する。"""
         messages = [
             {
                 "role": "system",
                 "content": (
-                    "あなたはAIシステムの目標達成状況を評価する専門家です。"
-                    "提供された目標、実行履歴、パフォーマンス指標を分析し、"
-                    "目標が達成されたかどうかを判断してください。\n\n"
-                    "応答は必ず以下のJSON形式で返してください：\n"
+                    "目標の達成状況を評価してください。"
+                    "応答は以下のJSON形式で返してください：\n"
                     "{\n"
                     '  "is_achieved": true/false,\n'
                     '  "completion_rate": 0.0-1.0,\n'
-                    '  "analysis": {\n'
-                    '    "completed_objectives": ["達成された目標1", ...],\n'
-                    '    "remaining_objectives": ["残りの目標1", ...],\n'
-                    '    "blockers": ["ブロッカー1", ...]\n'
-                    "  },\n"
-                    '  "recommendations": [\n'
-                    '    {\n'
-                    '      "action": "推奨アクション",\n'
-                    '      "priority": "high/medium/low",\n'
-                    '      "expected_impact": "期待される影響"\n'
-                    "    },\n"
-                    "    ...\n"
-                    "  ]\n"
+                    '  "recommendations": ["推奨アクション1"]\n'
                     "}"
                 ),
             },
             {
                 "role": "user",
-                "content": json.dumps(context, ensure_ascii=False, indent=2),
+                "content": json.dumps(context, ensure_ascii=False)
             },
         ]
 
@@ -731,28 +671,19 @@ Pythonコードを生成してください。
         return self.parse_json_response(response)
 
     def generate_tasks(self, prompt: Dict[str, Any]) -> Dict[str, Any]:
-        """新しいタスクを生成する。
-
-        Args:
-            prompt: タスク生成のためのプロンプト
-
-        Returns:
-            生成されたタスクのリスト
-        """
+        """新しいタスクを生成する。"""
         messages = [
             {
                 "role": "system",
                 "content": (
-                    "あなたはAIシステムのタスク生成の専門家です。"
-                    "目標とコンテキストに基づいて、次に実行すべきタスクを生成してください。\n\n"
-                    "応答は必ず以下のJSON形式で返してください：\n"
+                    "目標とコンテキストに基づいて、次のタスクを生成してください。"
+                    "応答は以下のJSON形式で返してください：\n"
                     "{\n"
                     '  "tasks": [\n'
                     "    {\n"
                     '      "description": "タスクの説明",\n'
-                    '      "priority": 1.0,\n'
-                    '      "estimated_duration": 300,\n'
-                    '      "dependencies": []\n'
+                    '      "operator_type": "タスクの種類",\n'
+                    '      "priority": 1.0\n'
                     "    }\n"
                     "  ]\n"
                     "}"
@@ -760,20 +691,9 @@ Pythonコードを生成してください。
             },
             {
                 "role": "user",
-                "content": json.dumps(prompt, ensure_ascii=False, indent=2),
+                "content": json.dumps(prompt, ensure_ascii=False)
             },
         ]
 
-        # 関連するコンテキストを追加
-        context = self.context_manager.get_relevant_context(prompt["objective"])
-        if context:
-            messages.append(
-                {
-                    "role": "system",
-                    "content": f"関連するコンテキスト情報:\n{json.dumps(context, ensure_ascii=False, indent=2)}",
-                }
-            )
-
-        # タスクの生成
         response = self._call_openai(messages, temperature=0.7)
         return self.parse_json_response(response) 

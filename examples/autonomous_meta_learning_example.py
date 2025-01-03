@@ -24,7 +24,7 @@ def setup_environment() -> None:
     """環境設定を行う。"""
     load_dotenv()
     
-    required_vars = ["OPENAI_API_KEY", "MODEL_NAME", "REDIS_URL"]
+    required_vars = ["OPENAI_API_KEY"]  # MODEL_NAMEはオプショナルに
     missing_vars = [var for var in required_vars if not os.getenv(var)]
     
     if missing_vars:
@@ -46,27 +46,40 @@ def main():
         setup_environment()
         logger.info("環境設定完了")
         
+        # APIキーの取得（必須）
+        api_key = os.getenv("OPENAI_API_KEY")
+        if not api_key:
+            raise ValueError("OPENAI_API_KEYが設定されていません")
+        
+        # モデルの選択（オプショナル）
+        model = os.getenv("MODEL_NAME", "gpt-3.5-turbo")
+        
         # LLMクライアントの初期化
         llm_client = LLMClient(
-            api_key=os.getenv("OPENAI_API_KEY"),
-            model=os.getenv("MODEL_NAME", "gpt-4")
+            api_key=api_key,
+            model=model
         )
-        logger.info(f"LLMクライアントを初期化: モデル={os.getenv('MODEL_NAME', 'gpt-4')}")
+        logger.info(f"LLMクライアントを初期化: モデル={model}")
         
         # オペレーターレジストリの初期化
         registry = OperatorRegistry()
         logger.info("オペレーターレジストリを初期化")
         
-        # キャッシュの初期化
-        cache = Cache(
-            backend="redis",
-            redis_config={
-                "host": os.getenv("REDIS_URL", "localhost").split("://")[-1].split(":")[0],
-                "port": int(os.getenv("REDIS_URL", "localhost:6379").split(":")[-1].split("/")[0]),
-                "db": int(os.getenv("REDIS_URL", "localhost:6379/0").split("/")[-1])
-            }
-        )
-        logger.info("キャッシュを初期化")
+        # キャッシュの初期化（オプショナル）
+        cache = None
+        redis_url = os.getenv("REDIS_URL")
+        if redis_url:
+            cache = Cache(
+                backend="redis",
+                redis_config={
+                    "host": redis_url.split("://")[-1].split(":")[0],
+                    "port": int(redis_url.split(":")[-1].split("/")[0]),
+                    "db": int(redis_url.split("/")[-1]) if "/" in redis_url else 0
+                }
+            )
+            logger.info("Redisキャッシュを初期化")
+        else:
+            logger.info("キャッシュなしで実行")
         
         # UnifiedManagerの初期化
         objective = "顧客データを分析し、購買パターンを特定して、パーソナライズされた推薦を生成する"
