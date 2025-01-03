@@ -1,13 +1,18 @@
 """Unified task and workflow management system."""
 from typing import Any, Dict, List, Optional
 from uuid import uuid4
+import logging
+import time
+from datetime import datetime, timedelta
 
 from genesis_agi.llm.client import LLMClient
 from genesis_agi.operators import BaseOperator, Task
 from genesis_agi.utils.cache import Cache
 from genesis_agi.operators.operator_registry import OperatorRegistry
 from genesis_agi.operators.operator_generator import OperatorGenerator
-from genesis_agi.core.meta_learner import MetaLearner
+from genesis_agi.core.meta_learning import MetaLearner
+
+logger = logging.getLogger(__name__)
 
 
 class UnifiedManager:
@@ -19,6 +24,11 @@ class UnifiedManager:
         registry: OperatorRegistry,
         cache: Optional[Cache] = None,
         objective: str = "タスクの生成と実行",
+        meta_learner: Optional[MetaLearner] = None,
+        operator_generator: Optional[OperatorGenerator] = None,
+        max_iterations: int = 10,
+        iteration_delay: float = 1.0,
+        max_execution_time: int = 600,
     ):
         """初期化。
 
@@ -27,22 +37,48 @@ class UnifiedManager:
             registry: オペレーターレジストリ
             cache: キャッシュ
             objective: システムの目標
+            meta_learner: メタ学習コンポーネント
+            operator_generator: オペレータージェネレーター
+            max_iterations: 最大イテレーション数
+            iteration_delay: イテレーション間の待機時間（秒）
+            max_execution_time: 最大実行時間（秒）
         """
         self.llm_client = llm_client
         self.registry = registry
         self.cache = cache
         self.objective = objective
-        self.operator_generator = OperatorGenerator(llm_client, registry)
-        self.meta_learner = MetaLearner(llm_client)
-        self.task_queue: List[Task] = []
+        self.meta_learner = meta_learner
+        self.operator_generator = operator_generator
+        self.max_iterations = max_iterations
+        self.iteration_delay = iteration_delay
+        self.max_execution_time = max_execution_time
+        
         self.execution_history: List[Dict[str, Any]] = []
+        self.task_queue: List[Task] = []
         self.current_context: Dict[str, Any] = {
             "objective": objective,
             "completed_tasks": [],
             "current_state": {},
             "performance_metrics": {},
-            "meta_knowledge": {}
+            "meta_knowledge": self._initialize_meta_knowledge()
         }
+
+        # meta_learnerが必要な場合は初期化
+        if self.meta_learner is None and meta_learner is None:
+            self.meta_learner = MetaLearner(
+                llm_client=llm_client,
+                registry=registry,
+                cache=cache,
+                operator_generator=self.operator_generator
+            )
+
+        # operator_generatorが必要な場合は初期化
+        if self.operator_generator is None and operator_generator is None:
+            self.operator_generator = OperatorGenerator(
+                llm_client=llm_client,
+                registry=registry,
+                cache=cache
+            )
 
     def analyze_and_create_task(self, task_description: str) -> Task:
         """タスクを分析し、必要なオペレーターを生成して、タスクを作成する。
@@ -63,7 +99,7 @@ class UnifiedManager:
         # タスクの分析とオペレータータイプの決定
         analysis = self.llm_client.analyze_task({
             "description": task_description,
-            "context": self.current_context,
+            "context": self.meta_learner._prepare_context_for_json(self.current_context),
             "generation_strategy": generation_strategy
         })
 
@@ -134,7 +170,7 @@ class UnifiedManager:
                 "result": result,
                 "operator": operator_type,
                 "meta_data": {
-                    "generation_strategy": generation_strategy,
+                    "generation_strategy": self.meta_learner._prepare_context_for_json(generation_strategy),
                     "performance_metrics": result.get("performance_metrics", {})
                 }
             }
@@ -206,37 +242,127 @@ class UnifiedManager:
             self.registry.register_operator(evolved_operator)
 
     def run(self) -> None:
-        """自律的なタスク実行のメインループ。"""
-        while True:
-            # 次のタスクを実行
-            result = self.execute_next_task()
-            if not result:
-                # タスクキューが空の場合、新しいタスクの生成を試みる
-                self._generate_new_tasks()
-                if not self.task_queue:
-                    break
-
-            # パフォーマンス指標の更新
-            self._update_performance_metrics(result)
-            
-            # 目的が達成されたかチェック
-            if self._is_objective_achieved():
+        """タスクを自律的に実行する。"""
+        start_time = time.time()
+        iteration = 0
+        
+        while iteration < self.max_iterations:
+            # 実行時間のチェック
+            if time.time() - start_time > self.max_execution_time:
+                logger.warning("最大実行時間を超過しました")
                 break
+            
+            # 次のタスクを取得
+            next_task = self.select_next_task()
+            if not next_task:
+                # 新しいタスクを生成
+                self._generate_new_tasks()
+                continue
+            
+            try:
+                # タスクの実行
+                logger.info(f"タスク実行: {next_task.name}")
+                result = self.execute_task(next_task)
+                
+                # 実行結果の記録
+                self.execution_history.append({
+                    "task": next_task.dict(),
+                    "result": result,
+                    "timestamp": datetime.now()
+                })
+                
+                # 成功した場合は新しいタスクを生成
+                if result.get("status") == "success":
+                    self.create_new_tasks(next_task, result)
+                
+            except Exception as e:
+                logger.error(f"タスク実行中にエラーが発生: {str(e)}")
+                # エラーを記録して次のタスクへ
+                self.execution_history.append({
+                    "task": next_task.dict(),
+                    "result": {"status": "error", "error": str(e)},
+                    "timestamp": datetime.now()
+                })
+            
+            # イテレーション間の待機
+            time.sleep(self.iteration_delay)
+            iteration += 1
+            
+            # 進捗状況の表示
+            self._display_progress(iteration)
+        
+        if iteration >= self.max_iterations:
+            logger.warning(f"最大イテレーション数（{self.max_iterations}）に達しました")
+        
+    def _display_progress(self, iteration: int) -> None:
+        """進捗状況を表示する。
+
+        Args:
+            iteration: 現在のイテレーション数
+        """
+        logger.info(f"進捗: {iteration}/{self.max_iterations} "
+                   f"({iteration/self.max_iterations*100:.1f}%)")
+        
+        # 成功率の計算
+        success_count = sum(
+            1 for record in self.execution_history
+            if record["result"].get("status") == "success"
+        )
+        if self.execution_history:
+            success_rate = success_count / len(self.execution_history) * 100
+            logger.info(f"成功率: {success_rate:.1f}%")
+
+    def _display_execution_stats(self) -> None:
+        """実行統計を表示する。"""
+        total_tasks = len(self.execution_history)
+        successful_tasks = sum(
+            1 for record in self.execution_history
+            if record["result"].get("status") == "success"
+        )
+        
+        logger.info("\n=== 実行統計 ===")
+        logger.info(f"総タスク数: {total_tasks}")
+        logger.info(f"成功タスク数: {successful_tasks}")
+        if total_tasks > 0:
+            logger.info(f"全体の成功率: {successful_tasks/total_tasks*100:.1f}%")
+
+    def _initialize_meta_knowledge(self) -> Dict[str, Any]:
+        """メタ知識を初期化する。
+
+        Returns:
+            初期化されたメタ知識
+        """
+        return {
+            "generation_strategies": {},
+            "evolution_patterns": [],
+            "context_dependencies": {},
+            "successful_patterns": [],
+            "failed_patterns": []
+        }
 
     def _generate_new_tasks(self) -> None:
-        """現在の状態から新しいタスクを生成する。"""
+        """新しいタスクを生成する。"""
+        # プロンプトの準備
         prompt = {
             "objective": self.objective,
-            "current_context": self.meta_learner._prepare_context_for_json(self.current_context),
-            "execution_history": self.execution_history
+            "current_context": {
+                k: str(v) if isinstance(v, datetime) else v
+                for k, v in self.current_context.items()
+            },
+            "execution_history": [
+                {
+                    k: str(v) if isinstance(v, datetime) else v
+                    for k, v in item.items()
+                }
+                for item in self.execution_history
+            ]
         }
         
-        # LLMに新しいタスクの提案を依頼
+        # LLMを使用してタスクを生成
         response = self.llm_client.suggest_new_tasks(prompt)
         
-        # 提案されたタスクを作成
-        for task_suggestion in response["suggested_tasks"]:
-            self.analyze_and_create_task(task_suggestion["description"])
+        # 生成されたタスクを作成
+        self._create_generated_tasks(response["tasks"])
 
     def create_task(
         self,

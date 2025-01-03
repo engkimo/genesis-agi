@@ -1,10 +1,23 @@
 """メタ学習を含む自律的なワークフロー実行のサンプル。"""
 import os
+import logging
 from dotenv import load_dotenv
 from genesis_agi.core.unified_manager import UnifiedManager
 from genesis_agi.llm.client import LLMClient
 from genesis_agi.operators.operator_registry import OperatorRegistry
 from genesis_agi.utils.cache import Cache
+
+
+def setup_logging() -> None:
+    """ロギングの設定を行う。"""
+    logging.basicConfig(
+        level=logging.INFO,
+        format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+        handlers=[
+            logging.StreamHandler(),  # 標準出力へのハンドラ
+            logging.FileHandler('genesis_agi.log')  # ファイルへのハンドラ
+        ]
+    )
 
 
 def setup_environment() -> None:
@@ -24,17 +37,25 @@ def setup_environment() -> None:
 def main():
     """メイン実行関数。"""
     try:
+        # ロギング設定
+        setup_logging()
+        logger = logging.getLogger(__name__)
+        logger.info("Genesis AGIを開始")
+        
         # 環境設定
         setup_environment()
+        logger.info("環境設定完了")
         
         # LLMクライアントの初期化
         llm_client = LLMClient(
             api_key=os.getenv("OPENAI_API_KEY"),
             model=os.getenv("MODEL_NAME", "gpt-4")
         )
+        logger.info(f"LLMクライアントを初期化: モデル={os.getenv('MODEL_NAME', 'gpt-4')}")
         
         # オペレーターレジストリの初期化
         registry = OperatorRegistry()
+        logger.info("オペレーターレジストリを初期化")
         
         # キャッシュの初期化
         cache = Cache(
@@ -45,28 +66,35 @@ def main():
                 "db": int(os.getenv("REDIS_URL", "localhost:6379/0").split("/")[-1])
             }
         )
+        logger.info("キャッシュを初期化")
         
         # UnifiedManagerの初期化
+        objective = "顧客データを分析し、購買パターンを特定して、パーソナライズされた推薦を生成する"
         manager = UnifiedManager(
             llm_client=llm_client,
             registry=registry,
             cache=cache,
-            objective="顧客データを分析し、購買パターンを特定して、パーソナライズされた推薦を生成する"
+            objective=objective
         )
+        logger.info(f"UnifiedManagerを初期化: 目標「{objective}」")
         
         print("=== 実行開始 ===")
         print(f"目的: {manager.objective}")
         print("初期タスクを生成中...")
+        logger.info("初期タスク生成を開始")
         
         # 初期タスクの作成（以降は自動的にタスクが生成・進化する）
         task = manager.analyze_and_create_task(
             "顧客の購買履歴データを収集し、基本的な分析を行う"
         )
+        logger.info(f"初期タスク生成完了: {task.description}")
         print(f"初期タスク生成完了: {task.description}")
         
         # 自律的な実行を開始
         print("\n自律的な実行を開始します...")
+        logger.info("自律的な実行を開始")
         manager.run()
+        logger.info("自律的な実行が完了")
         
         # 実行結果とメタ学習の状態を確認
         print("\n=== 実行結果 ===")

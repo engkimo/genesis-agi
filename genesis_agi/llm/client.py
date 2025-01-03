@@ -66,16 +66,13 @@ class LLMClient:
         """JSONレスポンスをパースする。
 
         Args:
-            response: JSONレスポンス
+            response: JSONレスポンス文字列
 
         Returns:
-            パースされたデータ
-
-        Raises:
-            ValueError: JSONのパースに失敗した場合
+            パースされたJSONオブジェクト
         """
         try:
-            # レスポンスからコードブロックを抽出
+            # コードブロックの処理
             if "```json" in response:
                 start = response.find("```json") + 7
                 end = response.find("```", start)
@@ -89,11 +86,38 @@ class LLMClient:
 
             # 空白を削除
             response = response.strip()
-
-            # JSONをパース
-            return json.loads(response)
+            
+            # 文字列結合演算子を削除
+            response = response.replace('"+', '')
+            response = response.replace('" +', '')
+            
+            # JSONの部分を抽出（最初の有効なJSONオブジェクト）
+            try:
+                # まず、完全なレスポンスでパースを試みる
+                return json.loads(response)
+            except json.JSONDecodeError:
+                # 失敗した場合、最初の有効なJSONオブジェクトを探す
+                brace_count = 0
+                start_index = response.find('{')
+                if start_index == -1:
+                    raise ValueError("No JSON object found in response")
+                
+                for i in range(start_index, len(response)):
+                    if response[i] == '{':
+                        brace_count += 1
+                    elif response[i] == '}':
+                        brace_count -= 1
+                        if brace_count == 0:
+                            # 有効なJSONオブジェクトを見つけた
+                            json_str = response[start_index:i+1]
+                            return json.loads(json_str)
+                
+                raise ValueError("No valid JSON object found in response")
+                
         except json.JSONDecodeError as e:
             raise ValueError(f"Failed to parse JSON response: {e}\nResponse: {response}")
+        except Exception as e:
+            raise ValueError(f"Error parsing response: {e}\nResponse: {response}")
 
     def generate_improvement_suggestions(
         self,
@@ -459,36 +483,71 @@ class LLMClient:
         }
 
     def generate_operator_code(self, prompt: Dict[str, Any]) -> Dict[str, Any]:
-        """オペレーターのコードを生成する。
+        """オペレーターコードを生成する。
 
         Args:
-            prompt: コード生成のためのプロンプト
+            prompt: プロンプト情報
 
         Returns:
-            生成されたコード
+            生成されたコードとクラス名を含む辞書
         """
         messages = [
             {
                 "role": "system",
-                "content": (
-                    "あなたはPythonコードを生成する専門家です。"
-                    "オペレーターの仕様に基づいて、実装コードを生成してください。\n\n"
-                    "応答は必ず以下のJSON形式で返してください：\n"
-                    "{\n"
-                    '  "code": "生成されたPythonコード",\n'
-                    '  "dependencies": ["必要なパッケージ1", "必要なパッケージ2"],\n'
-                    '  "test_cases": ["テストケース1", "テストケース2"]\n'
-                    "}"
-                ),
+                "content": """あなたはPythonオペレーターを生成するアシスタントです。
+以下の要件に従ってコードを生成してください：
+1. BaseOperatorを継承したクラスを作成
+2. 必要なメソッドを実装（execute, validate_input, get_output）
+3. 適切なエラーハンドリングを含める
+4. クリーンで読みやすいコードを生成
+5. 必要なインポートを含める
+6. データ分析に必要なライブラリ（pandas, numpy等）を使用する"""
             },
             {
                 "role": "user",
-                "content": json.dumps(prompt, ensure_ascii=False, indent=2),
-            },
+                "content": f"""
+タスク: {prompt['task']}
+コンテキスト: {json.dumps(prompt['context'], ensure_ascii=False)}
+既知のオペレーター: {json.dumps(prompt['known_operators'], ensure_ascii=False)}
+生成戦略: {json.dumps(prompt['strategy'], ensure_ascii=False)}
+
+Pythonコードを生成してください。
+"""
+            }
         ]
 
         response = self._call_openai(messages, temperature=0.7)
-        return self.parse_json_response(response)
+        
+        # コードブロックを抽出
+        if "```python" in response:
+            start = response.find("```python") + 9
+            end = response.find("```", start)
+            if end != -1:
+                code = response[start:end].strip()
+            else:
+                code = response
+        elif "```" in response:
+            start = response.find("```") + 3
+            end = response.find("```", start)
+            if end != -1:
+                code = response[start:end].strip()
+            else:
+                code = response
+        else:
+            code = response.strip()
+        
+        # クラス名を抽出
+        import re
+        class_match = re.search(r"class\s+(\w+)\(", code)
+        if not class_match:
+            raise ValueError("No class definition found in generated code")
+        
+        class_name = class_match.group(1)
+        
+        return {
+            "code": code,
+            "class_name": class_name
+        }
 
     def propose_operator_evolution(self, prompt: Dict[str, Any]) -> Dict[str, Any]:
         """オペレーターの進化を提案する。
