@@ -227,7 +227,7 @@ class UnifiedManager:
         """現在の状態から新しいタスクを生成する。"""
         prompt = {
             "objective": self.objective,
-            "current_context": self.current_context,
+            "current_context": self.meta_learner._prepare_context_for_json(self.current_context),
             "execution_history": self.execution_history
         }
         

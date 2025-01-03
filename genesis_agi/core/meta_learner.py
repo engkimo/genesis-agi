@@ -1,6 +1,6 @@
 """メタ学習システム。"""
 from typing import Dict, Any, List, Optional, Type
-from dataclasses import dataclass
+from dataclasses import dataclass, asdict
 import numpy as np
 from genesis_agi.llm.client import LLMClient
 from genesis_agi.operators.base_operator import BaseOperator
@@ -15,6 +15,20 @@ class GenerationStrategy:
     avg_performance: float
     usage_count: int
 
+    def to_dict(self) -> Dict[str, Any]:
+        """辞書形式に変換する。
+
+        Returns:
+            辞書形式のデータ
+        """
+        return {
+            "strategy_name": self.strategy_name,
+            "parameters": self.parameters,
+            "success_rate": self.success_rate,
+            "avg_performance": self.avg_performance,
+            "usage_count": self.usage_count
+        }
+
 
 @dataclass
 class EvolutionPattern:
@@ -24,6 +38,20 @@ class EvolutionPattern:
     evolved_state: Dict[str, Any]
     performance_improvement: float
     context: Dict[str, Any]
+
+    def to_dict(self) -> Dict[str, Any]:
+        """辞書形式に変換する。
+
+        Returns:
+            辞書形式のデータ
+        """
+        return {
+            "pattern_name": self.pattern_name,
+            "initial_state": self.initial_state,
+            "evolved_state": self.evolved_state,
+            "performance_improvement": self.performance_improvement,
+            "context": self.context
+        }
 
 
 class MetaLearner:
@@ -335,3 +363,27 @@ class MetaLearner:
         }
         response = self.llm_client.calculate_pattern_similarity(similarity_prompt)
         return float(response["similarity_score"]) 
+
+    def _prepare_context_for_json(self, context: Dict[str, Any]) -> Dict[str, Any]:
+        """JSONシリアライズ用にコンテキストを準備する。
+
+        Args:
+            context: 準備するコンテキスト
+
+        Returns:
+            JSONシリアライズ可能なコンテキスト
+        """
+        prepared_context = {}
+        for key, value in context.items():
+            if isinstance(value, (GenerationStrategy, EvolutionPattern)):
+                prepared_context[key] = value.to_dict()
+            elif isinstance(value, dict):
+                prepared_context[key] = self._prepare_context_for_json(value)
+            elif isinstance(value, list):
+                prepared_context[key] = [
+                    item.to_dict() if isinstance(item, (GenerationStrategy, EvolutionPattern)) else item
+                    for item in value
+                ]
+            else:
+                prepared_context[key] = value
+        return prepared_context 

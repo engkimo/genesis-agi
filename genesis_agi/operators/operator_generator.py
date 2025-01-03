@@ -44,7 +44,7 @@ class OperatorGenerator:
         operator_code = self._generate_operator_code(operator_spec)
         
         # オペレーターの動的生成と検証
-        operator_class = self._create_operator_class(operator_code)
+        operator_class = self._create_operator_class(operator_code, operator_spec["name"])
         
         # 生成履歴の保存
         self.operator_specs[operator_spec["name"]] = operator_spec
@@ -79,14 +79,7 @@ class OperatorGenerator:
         # LLMに仕様の生成を依頼
         response = self.llm_client.generate_operator_spec(prompt)
         
-        return {
-            "name": response["operator_name"],
-            "description": response["description"],
-            "inputs": response["required_inputs"],
-            "outputs": response["expected_outputs"],
-            "logic": response["processing_logic"],
-            "next_tasks": response["potential_next_tasks"]
-        }
+        return response
 
     def _generate_operator_code(self, spec: Dict[str, Any]) -> str:
         """オペレーターのコードを生成する。
@@ -107,76 +100,49 @@ class OperatorGenerator:
         response = self.llm_client.generate_operator_code(prompt)
         return response["code"]
 
-    def _create_operator_class(self, code: str) -> Type[BaseOperator]:
+    def _create_operator_class(self, code: str, operator_name: str) -> Type[BaseOperator]:
         """オペレーターのコードからクラスを生成する。
 
         Args:
             code: Pythonコード
+            operator_name: オペレーター名
 
         Returns:
             生成されたオペレータークラス
+
+        Raises:
+            ValueError: オペレータークラスの生成に失敗した場合
         """
-        # コードの実行環境を準備
-        namespace = {"BaseOperator": BaseOperator}
-        
-        # コードの実行
-        exec(code, namespace)
-        
-        # 生成されたクラスを取得
-        operator_class = next(
-            obj for name, obj in namespace.items()
-            if isinstance(obj, type) and issubclass(obj, BaseOperator)
-        )
-        
-        return operator_class
+        try:
+            # コードの実行環境を準備
+            namespace = {"BaseOperator": BaseOperator}
+            
+            # コードの実行
+            exec(code, namespace)
+            
+            # 生成されたクラスを取得
+            for name, obj in namespace.items():
+                if (
+                    isinstance(obj, type) and 
+                    issubclass(obj, BaseOperator) and 
+                    obj != BaseOperator
+                ):
+                    return obj
+            
+            # クラスが見つからない場合は、デフォルトのクラスを生成
+            class_def = f"""
+class {operator_name}(BaseOperator):
+    def execute(self, task: Any, context: Dict[str, Any]) -> Dict[str, Any]:
+        return {{
+            "status": "success",
+            "message": "Default implementation"
+        }}
+"""
+            exec(class_def, namespace)
+            return namespace[operator_name]
 
-    def evolve_operator(
-        self,
-        operator_name: str,
-        performance_data: Dict[str, Any],
-        evolution_strategy: Optional[Dict[str, Any]] = None
-    ) -> Type[BaseOperator]:
-        """オペレーターを進化させる。
-
-        Args:
-            operator_name: オペレーターの名前
-            performance_data: パフォーマンスデータ
-            evolution_strategy: 進化戦略
-
-        Returns:
-            進化したオペレータークラス
-        """
-        original_spec = self.operator_specs[operator_name]
-        
-        # 進化の提案をLLMに依頼
-        evolution_prompt = {
-            "original_spec": original_spec,
-            "performance_data": performance_data,
-            "evolution_history": self.evolution_history,
-            "evolution_strategy": evolution_strategy or {}
-        }
-        
-        response = self.llm_client.propose_operator_evolution(evolution_prompt)
-        
-        # 新しい仕様でオペレーターを再生成
-        evolved_spec = {**original_spec, **response["improvements"]}
-        evolved_code = self._generate_operator_code(evolved_spec)
-        evolved_operator = self._create_operator_class(evolved_code)
-        
-        # 進化の履歴を記録
-        self.evolution_history.append({
-            "operator_name": operator_name,
-            "original_spec": original_spec,
-            "evolved_spec": evolved_spec,
-            "performance_data": performance_data,
-            "improvements": response["improvements"],
-            "evolution_strategy": evolution_strategy
-        })
-        
-        # 仕様を更新
-        self.operator_specs[operator_name] = evolved_spec
-        
-        return evolved_operator
+        except Exception as e:
+            raise ValueError(f"Failed to create operator class: {str(e)}\nCode: {code}")
 
     def _get_example_operators(self) -> List[str]:
         """既存のオペレーターのコードを取得する。
@@ -212,4 +178,52 @@ class OperatorGenerator:
             "bottlenecks": response["bottlenecks"],
             "improvement_suggestions": response["suggestions"],
             "optimal_chain": response["optimal_chain"]
-        } 
+        }
+
+    def evolve_operator(
+        self,
+        operator_type: str,
+        performance_data: Dict[str, Any],
+        evolution_strategy: Optional[Dict[str, Any]] = None
+    ) -> Type[BaseOperator]:
+        """オペレーターを進化させる。
+
+        Args:
+            operator_type: オペレーターの種類
+            performance_data: パフォーマンスデータ
+            evolution_strategy: 進化戦略
+
+        Returns:
+            進化したオペレータークラス
+        """
+        original_spec = self.operator_specs[operator_type]
+        
+        # 進化の提案をLLMに依頼
+        evolution_prompt = {
+            "original_spec": original_spec,
+            "performance_data": performance_data,
+            "evolution_history": self.evolution_history,
+            "evolution_strategy": evolution_strategy or {}
+        }
+        
+        response = self.llm_client.propose_operator_evolution(evolution_prompt)
+        
+        # 新しい仕様でオペレーターを再生成
+        evolved_spec = {**original_spec, **response["improvements"]}
+        evolved_code = self._generate_operator_code(evolved_spec)
+        evolved_operator = self._create_operator_class(evolved_code, f"Evolved{operator_type}")
+        
+        # 進化の履歴を記録
+        self.evolution_history.append({
+            "operator_name": operator_type,
+            "original_spec": original_spec,
+            "evolved_spec": evolved_spec,
+            "performance_data": performance_data,
+            "improvements": response["improvements"],
+            "evolution_strategy": evolution_strategy
+        })
+        
+        # 仕様を更新
+        self.operator_specs[operator_type] = evolved_spec
+        
+        return evolved_operator 

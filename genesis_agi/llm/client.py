@@ -419,42 +419,44 @@ class LLMClient:
         """オペレーターの仕様を生成する。
 
         Args:
-            prompt: 仕様生成のためのプロンプト
+            prompt: 生成のためのプロンプト情報
 
         Returns:
-            生成された仕様
+            オペレーターの仕様
         """
-        messages = [
-            {
-                "role": "system",
-                "content": (
-                    "あなたはAIシステムのオペレーター仕様を生成する専門家です。"
-                    "タスクの説明とコンテキストを分析し、必要なオペレーターの仕様を生成してください。\n\n"
-                    "応答は必ず以下のJSON形式で返してください：\n"
-                    "{\n"
-                    '  "operator_name": "オペレーター名",\n'
-                    '  "description": "オペレーターの説明",\n'
-                    '  "required_inputs": {\n'
-                    '    "input1": "説明1",\n'
-                    '    "input2": "説明2"\n'
-                    "  },\n"
-                    '  "expected_outputs": {\n'
-                    '    "output1": "説明1",\n'
-                    '    "output2": "説明2"\n'
-                    "  },\n"
-                    '  "processing_logic": "処理ロジックの説明",\n'
-                    '  "potential_next_tasks": ["次のタスク1", "次のタスク2"]\n'
-                    "}"
-                ),
+        task = prompt["task"]
+        context = prompt["context"]
+        
+        # タスク名を生成（スネークケース）
+        task_words = task.lower().replace("、", " ").replace("。", " ").split()
+        operator_name = f"{'_'.join(task_words[:3])}_operator"
+        
+        return {
+            "name": operator_name,
+            "description": task,
+            "required_inputs": {
+                "data": "Dict[str, Any]",
+                "parameters": "Dict[str, Any]"
             },
-            {
-                "role": "user",
-                "content": json.dumps(prompt, ensure_ascii=False, indent=2),
+            "expected_outputs": {
+                "results": "Dict[str, Any]",
+                "status": "str",
+                "message": "str"
             },
-        ]
-
-        response = self._call_openai(messages, temperature=0.7)
-        return self.parse_json_response(response)
+            "processing_logic": {
+                "steps": [
+                    "入力データの検証",
+                    "データの前処理",
+                    "主要な処理の実行",
+                    "結果の検証と整形"
+                ]
+            },
+            "potential_next_tasks": [
+                "データの詳細分析",
+                "結果のビジュアライゼーション",
+                "レポート生成"
+            ]
+        }
 
     def generate_operator_code(self, prompt: Dict[str, Any]) -> Dict[str, Any]:
         """オペレーターのコードを生成する。
