@@ -6,11 +6,12 @@ import time
 from datetime import datetime, timedelta
 
 from genesis_agi.llm.client import LLMClient
-from genesis_agi.operators import BaseOperator, Task
+from genesis_agi.operators import BaseOperator
 from genesis_agi.utils.cache import Cache
 from genesis_agi.operators.operator_registry import OperatorRegistry
 from genesis_agi.operators.operator_generator import OperatorGenerator
 from genesis_agi.core.meta_learning import MetaLearner
+from genesis_agi.models.task import Task, TaskMetadata, ExecutionRecord
 
 logger = logging.getLogger(__name__)
 
@@ -30,19 +31,7 @@ class UnifiedManager:
         iteration_delay: float = 1.0,
         max_execution_time: int = 600,
     ):
-        """初期化。
-
-        Args:
-            llm_client: LLMクライアント
-            registry: オペレーターレジストリ
-            cache: キャッシュ
-            objective: システムの目標
-            meta_learner: メタ学習コンポーネント
-            operator_generator: オペレータージェネレーター
-            max_iterations: 最大イテレーション数
-            iteration_delay: イテレーション間の待機時間（秒）
-            max_execution_time: 最大実行時間（秒）
-        """
+        """初期化。"""
         self.llm_client = llm_client
         self.registry = registry
         self.cache = cache
@@ -53,7 +42,7 @@ class UnifiedManager:
         self.iteration_delay = iteration_delay
         self.max_execution_time = max_execution_time
         
-        self.execution_history: List[Dict[str, Any]] = []
+        self.execution_history: List[ExecutionRecord] = []
         self.task_queue: List[Task] = []
         self.current_context: Dict[str, Any] = {
             "objective": objective,
@@ -93,7 +82,7 @@ class UnifiedManager:
         generation_strategy = self.meta_learner.optimize_generation_strategy(
             task_description,
             self.current_context,
-            self.execution_history
+            [record.model_dump(mode='json') for record in self.execution_history]
         )
 
         # タスクの分析とオペレータータイプの決定
@@ -122,11 +111,7 @@ class UnifiedManager:
         )
 
     def execute_next_task(self) -> Optional[Dict[str, Any]]:
-        """次のタスクを実行する。
-
-        Returns:
-            実行結果
-        """
+        """次のタスクを実行する。"""
         if not self.task_queue:
             return None
 
@@ -137,13 +122,13 @@ class UnifiedManager:
 
         try:
             # オペレーターの取得または生成
-            operator_type = next_task.metadata["task_type"]
+            operator_type = next_task.metadata.task_type
             if operator_type not in self.registry._operators:
                 # メタ学習を使用して最適な生成戦略を取得
                 generation_strategy = self.meta_learner.optimize_generation_strategy(
                     next_task.description,
                     self.current_context,
-                    self.execution_history
+                    [record.model_dump(mode='json') for record in self.execution_history]
                 )
                 
                 operator_class = self.operator_generator.generate_operator(
@@ -165,16 +150,16 @@ class UnifiedManager:
             self._analyze_and_improve_operator(operator_type, result)
 
             # 実行履歴の更新
-            execution_record = {
-                "task": next_task.dict(),
-                "result": result,
-                "operator": operator_type,
-                "meta_data": {
-                    "generation_strategy": self.meta_learner._prepare_context_for_json(generation_strategy),
+            record = ExecutionRecord(
+                task=next_task,
+                result=result,
+                operator=operator_type,
+                meta_data={
+                    "generation_strategy": generation_strategy,
                     "performance_metrics": result.get("performance_metrics", {})
                 }
-            }
-            self.execution_history.append(execution_record)
+            )
+            self.execution_history.append(record)
             self.current_context["completed_tasks"].append(next_task.id)
 
             # 新しいタスクの生成
@@ -208,7 +193,7 @@ class UnifiedManager:
 
         # オペレーターチェーンの分析
         chain_analysis = self.operator_generator.analyze_operator_chain(
-            self.execution_history
+            [record.model_dump(mode='json') for record in self.execution_history]
         )
 
         # メタ学習を使用して進化戦略を取得
@@ -262,27 +247,27 @@ class UnifiedManager:
             try:
                 # タスクの実行
                 logger.info(f"タスク実行: {next_task.name}")
-                result = self.execute_task(next_task)
+                result = self.execute_next_task()
                 
                 # 実行結果の記録
-                self.execution_history.append({
-                    "task": next_task.dict(),
-                    "result": result,
-                    "timestamp": datetime.now()
-                })
+                record = ExecutionRecord(
+                    task=next_task,
+                    result=result or {"status": "unknown"}
+                )
+                self.execution_history.append(record)
                 
                 # 成功した場合は新しいタスクを生成
-                if result.get("status") == "success":
-                    self.create_new_tasks(next_task, result)
+                if result and result.get("status") == "success":
+                    self._generate_new_tasks()
                 
             except Exception as e:
                 logger.error(f"タスク実行中にエラーが発生: {str(e)}")
                 # エラーを記録して次のタスクへ
-                self.execution_history.append({
-                    "task": next_task.dict(),
-                    "result": {"status": "error", "error": str(e)},
-                    "timestamp": datetime.now()
-                })
+                record = ExecutionRecord(
+                    task=next_task,
+                    result={"status": "error", "error": str(e)}
+                )
+                self.execution_history.append(record)
             
             # イテレーション間の待機
             time.sleep(self.iteration_delay)
@@ -295,18 +280,14 @@ class UnifiedManager:
             logger.warning(f"最大イテレーション数（{self.max_iterations}）に達しました")
         
     def _display_progress(self, iteration: int) -> None:
-        """進捗状況を表示する。
-
-        Args:
-            iteration: 現在のイテレーション数
-        """
+        """進捗状況を表示する。"""
         logger.info(f"進捗: {iteration}/{self.max_iterations} "
                    f"({iteration/self.max_iterations*100:.1f}%)")
         
         # 成功率の計算
         success_count = sum(
             1 for record in self.execution_history
-            if record["result"].get("status") == "success"
+            if record.result.get("status") == "success"
         )
         if self.execution_history:
             success_rate = success_count / len(self.execution_history) * 100
@@ -317,7 +298,7 @@ class UnifiedManager:
         total_tasks = len(self.execution_history)
         successful_tasks = sum(
             1 for record in self.execution_history
-            if record["result"].get("status") == "success"
+            if record.result.get("status") == "success"
         )
         
         logger.info("\n=== 実行統計 ===")
@@ -342,27 +323,40 @@ class UnifiedManager:
 
     def _generate_new_tasks(self) -> None:
         """新しいタスクを生成する。"""
-        # プロンプトの準備
-        prompt = {
-            "objective": self.objective,
-            "current_context": {
-                k: str(v) if isinstance(v, datetime) else v
-                for k, v in self.current_context.items()
-            },
-            "execution_history": [
-                {
-                    k: str(v) if isinstance(v, datetime) else v
-                    for k, v in item.items()
-                }
-                for item in self.execution_history
+        try:
+            # 実行履歴をJSON直列化可能な形式に変換
+            serializable_history = [
+                record.model_dump(mode='json')
+                for record in self.execution_history
             ]
-        }
-        
-        # LLMを使用してタスクを生成
-        response = self.llm_client.suggest_new_tasks(prompt)
-        
-        # 生成されたタスクを作成
-        self._create_generated_tasks(response["tasks"])
+
+            # コンテキストをJSON直列化可能な形式に変換
+            serializable_context = {
+                k: (v.isoformat() if isinstance(v, datetime) else v)
+                for k, v in self.current_context.items()
+            }
+
+            # LLMに新しいタスクの生成を依頼
+            response = self.llm_client.generate_tasks({
+                "objective": self.objective,
+                "context": serializable_context,
+                "execution_history": serializable_history
+            })
+
+            # レスポンスの形式をチェック
+            if isinstance(response, dict):
+                tasks = response.get("tasks", [])
+                if not tasks and "task" in response:
+                    tasks = [response["task"]]
+            elif isinstance(response, list):
+                tasks = response
+            else:
+                tasks = []
+
+            if tasks:
+                self._create_generated_tasks(tasks)
+        except Exception as e:
+            logger.error(f"タスク生成中にエラーが発生: {str(e)}")
 
     def create_task(
         self,
@@ -371,27 +365,19 @@ class UnifiedManager:
         params: Optional[Dict[str, Any]] = None,
         priority: float = 1.0
     ) -> Task:
-        """タスクを作成する。
+        """タスクを作成する。"""
+        metadata = TaskMetadata(
+            task_type=task_type,
+            params=params or {},
+            context=self.current_context.copy()
+        )
 
-        Args:
-            description: タスクの説明
-            task_type: タスクの種類
-            params: タスクのパラメータ
-            priority: 優先度
-
-        Returns:
-            作成されたタスク
-        """
         task = Task(
             id=f"task-{uuid4()}",
             name=description,
             description=description,
             priority=priority,
-            metadata={
-                "task_type": task_type,
-                "params": params or {},
-                "context": self.current_context.copy()
-            }
+            metadata=metadata
         )
         self.task_queue.append(task)
         return task
@@ -420,9 +406,9 @@ class UnifiedManager:
         """LLMを使用してタスクの優先順位を更新する。"""
         context = {
             "objective": self.objective,
-            "current_tasks": [task.dict() for task in self.task_queue],
+            "current_tasks": [task.model_dump(mode='json') for task in self.task_queue],
             "completed_tasks": self.current_context["completed_tasks"],
-            "execution_history": self.execution_history
+            "execution_history": [record.model_dump(mode='json') for record in self.execution_history]
         }
 
         # LLMに優先順位付けを依頼
@@ -438,17 +424,13 @@ class UnifiedManager:
                     break
 
     def _create_generated_tasks(self, task_specs: List[Dict[str, Any]]) -> None:
-        """生成されたタスク仕様から新しいタスクを作成する。
-
-        Args:
-            task_specs: タスク仕様のリスト
-        """
+        """生成されたタスク仕様から新しいタスクを作成する。"""
         for spec in task_specs:
             self.create_task(
                 description=spec["description"],
-                task_type=spec["operator_type"],
+                task_type=spec.get("operator_type", "default"),
                 params=spec.get("params", {}),
-                priority=spec.get("priority", 1.0)
+                priority=float(spec.get("priority", 1.0))
             )
 
     def _prepare_context(self, required_keys: List[str]) -> Dict[str, Any]:

@@ -728,4 +728,52 @@ Pythonコードを生成してください。
         ]
 
         response = self._call_openai(messages, temperature=0.7)
+        return self.parse_json_response(response)
+
+    def generate_tasks(self, prompt: Dict[str, Any]) -> Dict[str, Any]:
+        """新しいタスクを生成する。
+
+        Args:
+            prompt: タスク生成のためのプロンプト
+
+        Returns:
+            生成されたタスクのリスト
+        """
+        messages = [
+            {
+                "role": "system",
+                "content": (
+                    "あなたはAIシステムのタスク生成の専門家です。"
+                    "目標とコンテキストに基づいて、次に実行すべきタスクを生成してください。\n\n"
+                    "応答は必ず以下のJSON形式で返してください：\n"
+                    "{\n"
+                    '  "tasks": [\n'
+                    "    {\n"
+                    '      "description": "タスクの説明",\n'
+                    '      "priority": 1.0,\n'
+                    '      "estimated_duration": 300,\n'
+                    '      "dependencies": []\n'
+                    "    }\n"
+                    "  ]\n"
+                    "}"
+                ),
+            },
+            {
+                "role": "user",
+                "content": json.dumps(prompt, ensure_ascii=False, indent=2),
+            },
+        ]
+
+        # 関連するコンテキストを追加
+        context = self.context_manager.get_relevant_context(prompt["objective"])
+        if context:
+            messages.append(
+                {
+                    "role": "system",
+                    "content": f"関連するコンテキスト情報:\n{json.dumps(context, ensure_ascii=False, indent=2)}",
+                }
+            )
+
+        # タスクの生成
+        response = self._call_openai(messages, temperature=0.7)
         return self.parse_json_response(response) 

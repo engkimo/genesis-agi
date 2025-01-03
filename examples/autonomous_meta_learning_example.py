@@ -99,16 +99,18 @@ def main():
         # 実行結果とメタ学習の状態を確認
         print("\n=== 実行結果 ===")
         for record in manager.execution_history:
-            print(f"\nタスク: {record['task']['description']}")
-            print(f"状態: {record['result']['status']}")
-            if record['result'].get('data'):
-                print(f"データ: {record['result']['data']}")
+            print(f"\nタスク: {record.task.description}")
+            print(f"状態: {record.result.get('status')}")
+            if record.result.get('data'):
+                print(f"データ: {record.result['data']}")
             
             # メタデータの表示
-            if 'meta_data' in record:
+            if record.meta_data:
                 print("\nメタ情報:")
-                print(f"生成戦略: {record['meta_data']['generation_strategy']}")
-                print(f"パフォーマンス指標: {record['meta_data']['performance_metrics']}")
+                if "generation_strategy" in record.meta_data:
+                    print(f"生成戦略: {record.meta_data['generation_strategy']}")
+                if "performance_metrics" in record.meta_data:
+                    print(f"パフォーマンス指標: {record.meta_data['performance_metrics']}")
         
         print("\n=== パフォーマンス指標 ===")
         print(manager.current_context["performance_metrics"])
@@ -119,20 +121,28 @@ def main():
         print("\n生成戦略:")
         for strategy_name, strategy in meta_knowledge["generation_strategies"].items():
             print(f"\n戦略名: {strategy_name}")
-            print(f"成功率: {strategy.success_rate:.2f}")
-            print(f"平均パフォーマンス: {strategy.avg_performance:.2f}")
-            print(f"使用回数: {strategy.usage_count}")
+            if hasattr(strategy, 'success_rate'):
+                print(f"成功率: {strategy.success_rate:.2f}")
+            if hasattr(strategy, 'avg_performance'):
+                print(f"平均パフォーマンス: {strategy.avg_performance:.2f}")
+            if hasattr(strategy, 'usage_count'):
+                print(f"使用回数: {strategy.usage_count}")
         
         print("\n進化パターン:")
         for pattern in meta_knowledge["evolution_patterns"]:
-            print(f"\nパターン名: {pattern.pattern_name}")
-            print(f"パフォーマンス改善: {pattern.performance_improvement:.2f}")
+            if hasattr(pattern, 'pattern_name'):
+                print(f"\nパターン名: {pattern.pattern_name}")
+            if hasattr(pattern, 'performance_improvement'):
+                print(f"パフォーマンス改善: {pattern.performance_improvement:.2f}")
         
         print("\nコンテキスト依存関係:")
         for factor, dependencies in meta_knowledge["context_dependencies"].items():
             print(f"\n要因: {factor}")
             for dep in dependencies:
-                print(f"- パターン: {dep['pattern']}, 影響度: {dep['impact']:.2f}")
+                if isinstance(dep, dict):
+                    print(f"- パターン: {dep.get('pattern')}, 影響度: {dep.get('impact', 0.0):.2f}")
+                else:
+                    print(f"- 依存関係: {dep}")
         
         # 詳細な分析の実行
         analyze_results(manager)
@@ -154,7 +164,7 @@ def analyze_results(manager: UnifiedManager) -> None:
         # オペレーター生成の分析
         operator_stats = {}
         for record in manager.execution_history:
-            operator_type = record["operator"]
+            operator_type = record.operator or "unknown"
             if operator_type not in operator_stats:
                 operator_stats[operator_type] = {
                     "count": 0,
@@ -165,28 +175,32 @@ def analyze_results(manager: UnifiedManager) -> None:
             
             stats = operator_stats[operator_type]
             stats["count"] += 1
-            if record["result"]["status"] == "success":
+            if record.result.get("status") == "success":
                 stats["success_count"] += 1
-            stats["total_time"] += record["result"].get("execution_time", 0)
-            stats["generated_tasks"] += len(record["result"].get("generated_tasks", []))
+            stats["total_time"] += record.result.get("execution_time", 0)
+            stats["generated_tasks"] += len(record.result.get("generated_tasks", []))
         
         print("\n=== オペレーター統計 ===")
         for operator_type, stats in operator_stats.items():
             print(f"\nオペレーター: {operator_type}")
             print(f"実行回数: {stats['count']}")
-            print(f"成功率: {stats['success_count'] / stats['count']:.2f}")
-            print(f"平均実行時間: {stats['total_time'] / stats['count']:.2f}秒")
+            success_rate = stats['success_count'] / stats['count'] if stats['count'] > 0 else 0
+            print(f"成功率: {success_rate:.2f}")
+            avg_time = stats['total_time'] / stats['count'] if stats['count'] > 0 else 0
+            print(f"平均実行時間: {avg_time:.2f}秒")
             print(f"生成タスク数: {stats['generated_tasks']}")
         
         # 進化パターンの分析
         evolution_stats = {
-            "total_evolutions": len(manager.meta_learner.evolution_patterns),
-            "successful_evolutions": len(manager.meta_learner.meta_knowledge["successful_patterns"]),
-            "failed_evolutions": len(manager.meta_learner.meta_knowledge["failed_patterns"]),
-            "avg_improvement": sum(
-                pattern.performance_improvement
-                for pattern in manager.meta_learner.evolution_patterns
-            ) / len(manager.meta_learner.evolution_patterns) if manager.meta_learner.evolution_patterns else 0
+            "total_evolutions": len(manager.meta_learner.evolution_patterns if manager.meta_learner else []),
+            "successful_evolutions": len(manager.meta_learner.meta_knowledge["successful_patterns"] if manager.meta_learner else []),
+            "failed_evolutions": len(manager.meta_learner.meta_knowledge["failed_patterns"] if manager.meta_learner else []),
+            "avg_improvement": (
+                sum(pattern.performance_improvement for pattern in manager.meta_learner.evolution_patterns)
+                / len(manager.meta_learner.evolution_patterns)
+                if manager.meta_learner and manager.meta_learner.evolution_patterns
+                else 0
+            )
         }
         
         print("\n=== 進化統計 ===")
