@@ -21,18 +21,24 @@ class OperatorGenerator:
         self.operator_specs: Dict[str, Dict[str, Any]] = {}
         self.evolution_history: List[Dict[str, Any]] = []
 
-    def generate_operator(self, task_description: str, context: Dict[str, Any]) -> Type[BaseOperator]:
+    def generate_operator(
+        self,
+        task_description: str,
+        context: Dict[str, Any],
+        generation_strategy: Optional[Dict[str, Any]] = None
+    ) -> Type[BaseOperator]:
         """タスクの説明からオペレーターを生成する。
 
         Args:
             task_description: タスクの説明
             context: 現在のコンテキスト
+            generation_strategy: オペレーター生成戦略
 
         Returns:
             生成されたオペレータークラス
         """
         # LLMにオペレーターの仕様を生成させる
-        operator_spec = self._generate_operator_spec(task_description, context)
+        operator_spec = self._generate_operator_spec(task_description, context, generation_strategy)
         
         # オペレーターコードの生成
         operator_code = self._generate_operator_code(operator_spec)
@@ -45,12 +51,18 @@ class OperatorGenerator:
         
         return operator_class
 
-    def _generate_operator_spec(self, task_description: str, context: Dict[str, Any]) -> Dict[str, Any]:
+    def _generate_operator_spec(
+        self,
+        task_description: str,
+        context: Dict[str, Any],
+        generation_strategy: Optional[Dict[str, Any]] = None
+    ) -> Dict[str, Any]:
         """オペレーターの仕様を生成する。
 
         Args:
             task_description: タスクの説明
             context: 現在のコンテキスト
+            generation_strategy: オペレーター生成戦略
 
         Returns:
             オペレーターの仕様
@@ -60,7 +72,8 @@ class OperatorGenerator:
             "context": context,
             "objective": context.get("objective", ""),
             "completed_tasks": context.get("completed_tasks", []),
-            "current_state": context.get("current_state", {})
+            "current_state": context.get("current_state", {}),
+            "generation_strategy": generation_strategy or {}
         }
         
         # LLMに仕様の生成を依頼
@@ -117,12 +130,18 @@ class OperatorGenerator:
         
         return operator_class
 
-    def evolve_operator(self, operator_name: str, performance_data: Dict[str, Any]) -> Type[BaseOperator]:
+    def evolve_operator(
+        self,
+        operator_name: str,
+        performance_data: Dict[str, Any],
+        evolution_strategy: Optional[Dict[str, Any]] = None
+    ) -> Type[BaseOperator]:
         """オペレーターを進化させる。
 
         Args:
             operator_name: オペレーターの名前
             performance_data: パフォーマンスデータ
+            evolution_strategy: 進化戦略
 
         Returns:
             進化したオペレータークラス
@@ -133,7 +152,8 @@ class OperatorGenerator:
         evolution_prompt = {
             "original_spec": original_spec,
             "performance_data": performance_data,
-            "evolution_history": self.evolution_history
+            "evolution_history": self.evolution_history,
+            "evolution_strategy": evolution_strategy or {}
         }
         
         response = self.llm_client.propose_operator_evolution(evolution_prompt)
@@ -149,7 +169,8 @@ class OperatorGenerator:
             "original_spec": original_spec,
             "evolved_spec": evolved_spec,
             "performance_data": performance_data,
-            "improvements": response["improvements"]
+            "improvements": response["improvements"],
+            "evolution_strategy": evolution_strategy
         })
         
         # 仕様を更新

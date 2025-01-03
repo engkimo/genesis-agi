@@ -196,6 +196,46 @@ class LLMClient:
         """
         self.context_manager.update_strategy(strategy_name, new_strategy)
 
+    def analyze_task(self, prompt: Dict[str, Any]) -> Dict[str, Any]:
+        """タスクを分析する。
+
+        Args:
+            prompt: タスク分析のためのプロンプト
+
+        Returns:
+            分析結果
+        """
+        messages = [
+            {
+                "role": "system",
+                "content": (
+                    "あなたはAIシステムのタスク分析の専門家です。"
+                    "提供されたタスクの説明とコンテキストを分析し、"
+                    "必要なオペレータータイプとパラメータを特定してください。\n\n"
+                    "応答は必ず以下のJSON形式で返してください：\n"
+                    "{\n"
+                    '  "required_operator_type": "必要なオペレーターの種類",\n'
+                    '  "required_params": {\n'
+                    '    "param1": "値1",\n'
+                    '    "param2": "値2"\n'
+                    "  },\n"
+                    '  "task_analysis": {\n'
+                    '    "complexity": "タスクの複雑さ（low/medium/high）",\n'
+                    '    "dependencies": ["依存するタスクやリソース"],\n'
+                    '    "expected_duration": "予想される実行時間（秒）"\n'
+                    "  }\n"
+                    "}"
+                ),
+            },
+            {
+                "role": "user",
+                "content": json.dumps(prompt, ensure_ascii=False, indent=2),
+            },
+        ]
+
+        response = self._call_openai(messages, temperature=0.5)
+        return self.parse_json_response(response)
+
     def optimize_generation_strategy(self, prompt: Dict[str, Any]) -> Dict[str, Any]:
         """オペレーター生成戦略を最適化する。
 
@@ -211,7 +251,17 @@ class LLMClient:
                 "content": (
                     "あなたはAIシステムのオペレーター生成戦略を最適化する専門家です。"
                     "タスクの説明、コンテキスト、これまでの戦略の成功率を分析し、"
-                    "最適な生成戦略を提案してください。"
+                    "最適な生成戦略を提案してください。\n\n"
+                    "応答は必ず以下のJSON形式で返してください：\n"
+                    "{\n"
+                    '  "strategy_name": "戦略名",\n'
+                    '  "parameters": {\n'
+                    '    "data_collection": { ... },\n'
+                    '    "analysis_methods": { ... },\n'
+                    '    "optimization_targets": { ... }\n'
+                    "  },\n"
+                    '  "expected_outcomes": { ... }\n'
+                    "}"
                 ),
             },
             {
@@ -238,7 +288,15 @@ class LLMClient:
                 "content": (
                     "あなたはAIシステムのオペレーター進化戦略を生成する専門家です。"
                     "オペレーターの現在の状態、パフォーマンスデータ、コンテキストを分析し、"
-                    "最適な進化戦略を提案してください。"
+                    "最適な進化戦略を提案してください。\n\n"
+                    "応答は必ず以下のJSON形式で返してください：\n"
+                    "{\n"
+                    '  "strategy": {\n'
+                    '    "evolution_type": "進化の種類",\n'
+                    '    "modifications": [ ... ],\n'
+                    '    "expected_improvements": { ... }\n'
+                    "  }\n"
+                    "}"
                 ),
             },
             {
@@ -264,7 +322,15 @@ class LLMClient:
                 "role": "system",
                 "content": (
                     "あなたは2つのコンテキスト間の意味的類似性を評価する専門家です。"
-                    "提供された2つのコンテキストを分析し、0から1の範囲で類似度スコアを算出してください。"
+                    "提供された2つのコンテキストを分析し、0から1の範囲で類似度スコアを算出してください。\n\n"
+                    "応答は必ず以下のJSON形式で返してください：\n"
+                    "{\n"
+                    '  "similarity_score": 0.85,\n'
+                    '  "analysis": {\n'
+                    '    "common_features": [ ... ],\n'
+                    '    "differences": [ ... ]\n'
+                    "  }\n"
+                    "}"
                 ),
             },
             {
@@ -291,7 +357,16 @@ class LLMClient:
                 "content": (
                     "あなたは進化パターン間の類似性を評価する専門家です。"
                     "提供された2つのパターン（状態とコンテキスト）を分析し、"
-                    "0から1の範囲で類似度スコアを算出してください。"
+                    "0から1の範囲で類似度スコアを算出してください。\n\n"
+                    "応答は必ず以下のJSON形式で返してください：\n"
+                    "{\n"
+                    '  "similarity_score": 0.75,\n'
+                    '  "pattern_analysis": {\n'
+                    '    "state_similarity": { ... },\n'
+                    '    "context_similarity": { ... },\n'
+                    '    "key_differences": [ ... ]\n'
+                    "  }\n"
+                    "}"
                 ),
             },
             {
@@ -318,7 +393,17 @@ class LLMClient:
                 "content": (
                     "あなたは進化パターンを分析する専門家です。"
                     "提供されたパターンの初期状態、進化後の状態、パフォーマンス改善、"
-                    "およびコンテキストを分析し、パターンの特徴と効果を評価してください。"
+                    "およびコンテキストを分析し、パターンの特徴と効果を評価してください。\n\n"
+                    "応答は必ず以下のJSON形式で返してください：\n"
+                    "{\n"
+                    '  "is_successful": true,\n'
+                    '  "analysis": {\n'
+                    '    "improvement_factors": [ ... ],\n'
+                    '    "context_factors": [ ... ],\n'
+                    '    "factor_impacts": { ... }\n'
+                    "  },\n"
+                    '  "recommendations": [ ... ]\n'
+                    "}"
                 ),
             },
             {
@@ -328,4 +413,111 @@ class LLMClient:
         ]
 
         response = self._call_openai(messages, temperature=0.5)
+        return self.parse_json_response(response)
+
+    def generate_operator_spec(self, prompt: Dict[str, Any]) -> Dict[str, Any]:
+        """オペレーターの仕様を生成する。
+
+        Args:
+            prompt: 仕様生成のためのプロンプト
+
+        Returns:
+            生成された仕様
+        """
+        messages = [
+            {
+                "role": "system",
+                "content": (
+                    "あなたはAIシステムのオペレーター仕様を生成する専門家です。"
+                    "タスクの説明とコンテキストを分析し、必要なオペレーターの仕様を生成してください。\n\n"
+                    "応答は必ず以下のJSON形式で返してください：\n"
+                    "{\n"
+                    '  "operator_name": "オペレーター名",\n'
+                    '  "description": "オペレーターの説明",\n'
+                    '  "required_inputs": {\n'
+                    '    "input1": "説明1",\n'
+                    '    "input2": "説明2"\n'
+                    "  },\n"
+                    '  "expected_outputs": {\n'
+                    '    "output1": "説明1",\n'
+                    '    "output2": "説明2"\n'
+                    "  },\n"
+                    '  "processing_logic": "処理ロジックの説明",\n'
+                    '  "potential_next_tasks": ["次のタスク1", "次のタスク2"]\n'
+                    "}"
+                ),
+            },
+            {
+                "role": "user",
+                "content": json.dumps(prompt, ensure_ascii=False, indent=2),
+            },
+        ]
+
+        response = self._call_openai(messages, temperature=0.7)
+        return self.parse_json_response(response)
+
+    def generate_operator_code(self, prompt: Dict[str, Any]) -> Dict[str, Any]:
+        """オペレーターのコードを生成する。
+
+        Args:
+            prompt: コード生成のためのプロンプト
+
+        Returns:
+            生成されたコード
+        """
+        messages = [
+            {
+                "role": "system",
+                "content": (
+                    "あなたはPythonコードを生成する専門家です。"
+                    "オペレーターの仕様に基づいて、実装コードを生成してください。\n\n"
+                    "応答は必ず以下のJSON形式で返してください：\n"
+                    "{\n"
+                    '  "code": "生成されたPythonコード",\n'
+                    '  "dependencies": ["必要なパッケージ1", "必要なパッケージ2"],\n'
+                    '  "test_cases": ["テストケース1", "テストケース2"]\n'
+                    "}"
+                ),
+            },
+            {
+                "role": "user",
+                "content": json.dumps(prompt, ensure_ascii=False, indent=2),
+            },
+        ]
+
+        response = self._call_openai(messages, temperature=0.7)
+        return self.parse_json_response(response)
+
+    def propose_operator_evolution(self, prompt: Dict[str, Any]) -> Dict[str, Any]:
+        """オペレーターの進化を提案する。
+
+        Args:
+            prompt: 進化提案のためのプロンプト
+
+        Returns:
+            進化の提案
+        """
+        messages = [
+            {
+                "role": "system",
+                "content": (
+                    "あなたはAIシステムのオペレーター進化を提案する専門家です。"
+                    "現在のオペレーターの状態とパフォーマンスデータを分析し、改善案を提案してください。\n\n"
+                    "応答は必ず以下のJSON形式で返してください：\n"
+                    "{\n"
+                    '  "improvements": {\n'
+                    '    "logic_updates": ["更新1", "更新2"],\n'
+                    '    "parameter_adjustments": {"param1": "新しい値1"},\n'
+                    '    "new_features": ["機能1", "機能2"]\n'
+                    "  }\n"
+                    "}"
+                ),
+            },
+            {
+                "role": "user",
+                "content": json.dumps(prompt, ensure_ascii=False, indent=2),
+            },
+        ]
+
+        response = self._call_openai(messages, temperature=0.7)
         return self.parse_json_response(response) 
