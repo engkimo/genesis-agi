@@ -1,699 +1,381 @@
 """LLMクライアント。"""
-import json
 from typing import Any, Dict, List, Optional
-
+import logging
+import os
 from openai import OpenAI
-from tenacity import retry, stop_after_attempt, wait_exponential
+from openai.types.chat import (
+    ChatCompletion,
+    ChatCompletionMessage,
+    ChatCompletionMessageParam,
+    ChatCompletionSystemMessageParam,
+    ChatCompletionUserMessageParam
+)
 
-from genesis_agi.context.context_manager import ContextManager
-from genesis_agi.operators import Task
-from genesis_agi.utils.cache import Cache
+logger = logging.getLogger(__name__)
 
 
 class LLMClient:
     """LLMクライアント。"""
 
-    def __init__(
-        self,
-        api_key: str,
-        model: str = "gpt-3.5-turbo",
-        cache: Optional[Cache] = None,
-        context_manager: Optional[ContextManager] = None,
-    ):
+    def __init__(self, api_key: Optional[str] = None, model: str = "gpt-4"):
         """初期化。
 
         Args:
-            api_key: OpenAI APIキー
+            api_key: OpenAI APIキー（Noneの場合は環境変数から取得）
             model: 使用するモデル名
-            cache: キャッシュ
-            context_manager: コンテキストマネージャー
         """
-        self.api_key = api_key
         self.model = model
-        self.cache = cache
-        self.context_manager = context_manager or ContextManager()
-        self.client = OpenAI(api_key=api_key)
+        if api_key:
+            os.environ["OPENAI_API_KEY"] = api_key
+        self.client = OpenAI()
 
-    @retry(
-        stop=stop_after_attempt(3),
-        wait=wait_exponential(multiplier=1, min=4, max=10),
-    )
-    def _call_openai(
-        self,
-        messages: List[Dict[str, str]],
-        temperature: float = 0.7,
-        max_tokens: Optional[int] = None,
-    ) -> str:
-        """OpenAI APIを呼び出す。
+    def _create_messages(self, system_content: str, user_content: str) -> List[ChatCompletionMessageParam]:
+        """メッセージリストを作成する。
 
         Args:
-            messages: メッセージリスト
-            temperature: 温度パラメータ
-            max_tokens: 最大トークン数
+            system_content: システムメッセージの内容
+            user_content: ユーザーメッセージの内容
 
         Returns:
-            生成されたテキスト
+            メッセージリスト
         """
+        return [
+            ChatCompletionSystemMessageParam(
+                role="system",
+                content=system_content
+            ),
+            ChatCompletionUserMessageParam(
+                role="user",
+                content=user_content
+            )
+        ]
+
+    def generate_strategy(self, prompt: Dict[str, Any]) -> Dict[str, Any]:
+        """生成戦略を生成する。
+
+        Args:
+            prompt: プロンプト
+
+        Returns:
+            生成された戦略
+        """
+        messages = self._create_messages(
+            system_content="あなたはオペレーター生成戦略の専門家です。",
+            user_content=f"""
+            以下の情報に基づいて、最適な生成戦略を提案してください：
+
+            タスク: {prompt['task']}
+            コンテキスト: {prompt['context']}
+            既知の戦略: {prompt['known_strategies']}
+            実行履歴: {prompt['history']}
+            """
+        )
+
         response = self.client.chat.completions.create(
             model=self.model,
-            messages=messages,
-            temperature=temperature,
-            max_tokens=max_tokens,
+            messages=messages
         )
-        return response.choices[0].message.content
 
-    def parse_json_response(self, response: str) -> Any:
-        """JSONレスポンスをパースする。
-
-        Args:
-            response: JSONレスポンス文字列
-
-        Returns:
-            パースされたJSONオブジェクト
-        """
-        try:
-            # コードブロックの処理
-            if "```json" in response:
-                start = response.find("```json") + 7
-                end = response.find("```", start)
-                if end != -1:
-                    response = response[start:end]
-            elif "```" in response:
-                start = response.find("```") + 3
-                end = response.find("```", start)
-                if end != -1:
-                    response = response[start:end]
-
-            # 空白を削除
-            response = response.strip()
-            
-            # 文字列結合演算子を削除
-            response = response.replace('"+', '')
-            response = response.replace('" +', '')
-            
-            # JSONの部分を抽出（最初の有効なJSONオブジェクト）
-            try:
-                # まず、完全なレスポンスでパースを試みる
-                return json.loads(response)
-            except json.JSONDecodeError:
-                # 失敗した場合、最初の有効なJSONオブジェクトを探す
-                brace_count = 0
-                start_index = response.find('{')
-                if start_index == -1:
-                    raise ValueError("No JSON object found in response")
-                
-                for i in range(start_index, len(response)):
-                    if response[i] == '{':
-                        brace_count += 1
-                    elif response[i] == '}':
-                        brace_count -= 1
-                        if brace_count == 0:
-                            # 有効なJSONオブジェクトを見つけた
-                            json_str = response[start_index:i+1]
-                            return json.loads(json_str)
-                
-                raise ValueError("No valid JSON object found in response")
-                
-        except json.JSONDecodeError as e:
-            raise ValueError(f"Failed to parse JSON response: {e}\nResponse: {response}")
-        except Exception as e:
-            raise ValueError(f"Error parsing response: {e}\nResponse: {response}")
-
-    def generate_improvement_suggestions(
-        self,
-        task: Task,
-        task_history: List[Dict[str, Any]],
-        performance_metrics: Dict[str, Any],
-    ) -> List[Dict[str, Any]]:
-        """改善提案を生成する。
-
-        Args:
-            task: タスク
-            task_history: タスク実行履歴
-            performance_metrics: パフォーマンス指標
-
-        Returns:
-            改善提案のリスト
-        """
-        # キャッシュをチェック
-        cache_key = f"improvement_suggestions:{task.id}"
-        if self.cache:
-            cached_result = self.cache.get(cache_key)
-            if cached_result is not None:
-                return cached_result
-
-        # プロンプトの構築
-        messages = [
-            {
-                "role": "system",
-                "content": (
-                    "あなたはAIシステムの改善を提案するアシスタントです。"
-                    "タスクの実行履歴とパフォーマンス指標を分析し、"
-                    "システムの改善提案を生成してください。"
-                ),
-            },
-            {
-                "role": "user",
-                "content": json.dumps(
-                    {
-                        "task": task.dict(),
-                        "task_history": task_history,
-                        "performance_metrics": performance_metrics,
-                    },
-                    ensure_ascii=False,
-                    indent=2,
-                ),
-            },
-        ]
-
-        # 関連するコンテキストを追加
-        context = self.context_manager.get_relevant_context(task.description)
-        if context:
-            messages.append(
-                {
-                    "role": "system",
-                    "content": f"関連するコンテキスト情報:\n{json.dumps(context, ensure_ascii=False, indent=2)}",
-                }
-            )
-
-        # 改善提案の生成
-        response = self._call_openai(messages, temperature=0.7)
-        suggestions = self.parse_json_response(response)
-
-        # キャッシュに保存
-        if self.cache:
-            self.cache.set(cache_key, suggestions, ttl=3600)  # 1時間キャッシュ
-
-        return suggestions
-
-    def update_prompt_template(self, template_name: str, new_template: str) -> None:
-        """プロンプトテンプレートを更新する。
-
-        Args:
-            template_name: テンプレート名
-            new_template: 新しいテンプレート
-        """
-        self.context_manager.update_prompt_template(template_name, new_template)
-
-    def update_parameters(self, parameter_name: str, new_value: Any) -> None:
-        """パラメータを更新する。
-
-        Args:
-            parameter_name: パラメータ名
-            new_value: 新しい値
-        """
-        if parameter_name == "temperature":
-            if not isinstance(new_value, (int, float)) or not 0 <= new_value <= 1:
-                raise ValueError("Temperature must be a float between 0 and 1")
-        elif parameter_name == "max_tokens":
-            if not isinstance(new_value, int) or new_value <= 0:
-                raise ValueError("max_tokens must be a positive integer")
-
-        self.context_manager.update_parameter(parameter_name, new_value)
-
-    def update_strategy(self, strategy_name: str, new_strategy: Dict[str, Any]) -> None:
-        """戦略を更新する。
-
-        Args:
-            strategy_name: 戦略名
-            new_strategy: 新しい戦略
-        """
-        self.context_manager.update_strategy(strategy_name, new_strategy)
-
-    def analyze_task(self, prompt: Dict[str, Any]) -> Dict[str, Any]:
-        """タスクを分析する。"""
-        messages = [
-            {
-                "role": "system",
-                "content": (
-                    "タスクを分析し、必要なオペレータータイプとパラメータを特定してください。"
-                    "応答は以下のJSON形式で返してください：\n"
-                    "{\n"
-                    '  "required_operator_type": "オペレータータイプ",\n'
-                    '  "required_params": {"param1": "値1"},\n'
-                    '  "task_analysis": {"complexity": "low/medium/high"}\n'
-                    "}"
-                ),
-            },
-            {
-                "role": "user",
-                "content": json.dumps(prompt, ensure_ascii=False)
-            },
-        ]
-
-        response = self._call_openai(messages, temperature=0.5)
-        return self.parse_json_response(response)
-
-    def optimize_generation_strategy(self, prompt: Dict[str, Any]) -> Dict[str, Any]:
-        """オペレーター生成戦略を最適化する。
-
-        Args:
-            prompt: 最適化のためのプロンプト
-
-        Returns:
-            最適化された生成戦略
-        """
-        messages = [
-            {
-                "role": "system",
-                "content": (
-                    "あなたはAIシステムのオペレーター生成戦略を最適化する専門家です。"
-                    "タスクの説明、コンテキスト、これまでの戦略の成功率を分析し、"
-                    "最適な生成戦略を提案してください。\n\n"
-                    "応答は必ず以下のJSON形式で返してください：\n"
-                    "{\n"
-                    '  "strategy_name": "戦略名",\n'
-                    '  "parameters": {\n'
-                    '    "data_collection": { ... },\n'
-                    '    "analysis_methods": { ... },\n'
-                    '    "optimization_targets": { ... }\n'
-                    "  },\n"
-                    '  "expected_outcomes": { ... }\n'
-                    "}"
-                ),
-            },
-            {
-                "role": "user",
-                "content": json.dumps(prompt, ensure_ascii=False, indent=2),
-            },
-        ]
-
-        response = self._call_openai(messages, temperature=0.7)
-        return self.parse_json_response(response)
-
-    def generate_evolution_strategy(self, prompt: Dict[str, Any]) -> Dict[str, Any]:
-        """進化戦略を生成する。
-
-        Args:
-            prompt: 戦略生成のためのプロンプト
-
-        Returns:
-            生成された進化戦略
-        """
-        messages = [
-            {
-                "role": "system",
-                "content": (
-                    "あなたはAIシステムのオペレーター進化戦略を生成する専門家です。"
-                    "オペレーターの現在の状態、パフォーマンスデータ、コンテキストを分析し、"
-                    "最適な進化戦略を提案してください。\n\n"
-                    "応答は必ず以下のJSON形式で返してください：\n"
-                    "{\n"
-                    '  "strategy": {\n'
-                    '    "evolution_type": "進化の種類",\n'
-                    '    "modifications": [ ... ],\n'
-                    '    "expected_improvements": { ... }\n'
-                    "  }\n"
-                    "}"
-                ),
-            },
-            {
-                "role": "user",
-                "content": json.dumps(prompt, ensure_ascii=False, indent=2),
-            },
-        ]
-
-        response = self._call_openai(messages, temperature=0.7)
-        return self.parse_json_response(response)
-
-    def calculate_context_similarity(self, prompt: Dict[str, Any]) -> Dict[str, Any]:
-        """コンテキスト間の類似度を計算する。
-
-        Args:
-            prompt: 類似度計算のためのプロンプト
-
-        Returns:
-            類似度スコアを含む結果
-        """
-        messages = [
-            {
-                "role": "system",
-                "content": (
-                    "あなたは2つのコンテキスト間の意味的類似性を評価する専門家です。"
-                    "提供された2つのコンテキストを分析し、0から1の範囲で類似度スコアを算出してください。\n\n"
-                    "応答は必ず以下のJSON形式で返してください：\n"
-                    "{\n"
-                    '  "similarity_score": 0.85,\n'
-                    '  "analysis": {\n'
-                    '    "common_features": [ ... ],\n'
-                    '    "differences": [ ... ]\n'
-                    "  }\n"
-                    "}"
-                ),
-            },
-            {
-                "role": "user",
-                "content": json.dumps(prompt, ensure_ascii=False, indent=2),
-            },
-        ]
-
-        response = self._call_openai(messages, temperature=0.3)
-        return self.parse_json_response(response)
-
-    def calculate_pattern_similarity(self, prompt: Dict[str, Any]) -> Dict[str, Any]:
-        """パターン間の類似度を計算する。
-
-        Args:
-            prompt: 類似度計算のためのプロンプト
-
-        Returns:
-            類似度スコアを含む結果
-        """
-        messages = [
-            {
-                "role": "system",
-                "content": (
-                    "あなたは進化パターン間の類似性を評価する専門家です。"
-                    "提供された2つのパターン（状態とコンテキスト）を分析し、"
-                    "0から1の範囲で類似度スコアを算出してください。\n\n"
-                    "応答は必ず以下のJSON形式で返してください：\n"
-                    "{\n"
-                    '  "similarity_score": 0.75,\n'
-                    '  "pattern_analysis": {\n'
-                    '    "state_similarity": { ... },\n'
-                    '    "context_similarity": { ... },\n'
-                    '    "key_differences": [ ... ]\n'
-                    "  }\n"
-                    "}"
-                ),
-            },
-            {
-                "role": "user",
-                "content": json.dumps(prompt, ensure_ascii=False, indent=2),
-            },
-        ]
-
-        response = self._call_openai(messages, temperature=0.3)
-        return self.parse_json_response(response)
-
-    def analyze_evolution_pattern(self, prompt: Dict[str, Any]) -> Dict[str, Any]:
-        """進化パターンを分析する。
-
-        Args:
-            prompt: パターン分析のためのプロンプト
-
-        Returns:
-            分析結果
-        """
-        messages = [
-            {
-                "role": "system",
-                "content": (
-                    "あなたは進化パターンを分析する専門家です。"
-                    "提供されたパターンの初期状態、進化後の状態、パフォーマンス改善、"
-                    "およびコンテキストを分析し、パターンの特徴と効果を評価してください。\n\n"
-                    "応答は必ず以下のJSON形式で返してください：\n"
-                    "{\n"
-                    '  "is_successful": true,\n'
-                    '  "analysis": {\n'
-                    '    "improvement_factors": [ ... ],\n'
-                    '    "context_factors": [ ... ],\n'
-                    '    "factor_impacts": { ... }\n'
-                    "  },\n"
-                    '  "recommendations": [ ... ]\n'
-                    "}"
-                ),
-            },
-            {
-                "role": "user",
-                "content": json.dumps(prompt, ensure_ascii=False, indent=2),
-            },
-        ]
-
-        response = self._call_openai(messages, temperature=0.5)
-        return self.parse_json_response(response)
-
-    def generate_operator_spec(self, prompt: Dict[str, Any]) -> Dict[str, Any]:
-        """オペレーターの仕様を生成する。
-
-        Args:
-            prompt: 生成のためのプロンプト情報
-
-        Returns:
-            オペレーターの仕様
-        """
-        task = prompt["task"]
-        context = prompt["context"]
+        strategy_text = response.choices[0].message.content
+        if not strategy_text:
+            strategy_text = "デフォルトの戦略を使用します。"
         
-        # タスク名を生成（スネークケース）
-        task_words = task.lower().replace("、", " ").replace("。", " ").split()
-        operator_name = f"{'_'.join(task_words[:3])}_operator"
-        
+        # 戦略をパースして返す
         return {
-            "name": operator_name,
-            "description": task,
-            "required_inputs": {
-                "data": "Dict[str, Any]",
-                "parameters": "Dict[str, Any]"
-            },
-            "expected_outputs": {
-                "results": "Dict[str, Any]",
-                "status": "str",
-                "message": "str"
-            },
-            "processing_logic": {
-                "steps": [
-                    "入力データの検証",
-                    "データの前処理",
-                    "主要な処理の実行",
-                    "結果の検証と整形"
-                ]
-            },
-            "potential_next_tasks": [
-                "データの詳細分析",
-                "結果のビジュアライゼーション",
-                "レポート生成"
-            ]
+            "strategy_type": "adaptive",  # デフォルトの戦略タイプ
+            "parameters": {
+                "description": strategy_text,
+                "complexity": "medium",
+                "focus_areas": ["error_handling", "performance_optimization"]
+            }
         }
 
     def generate_operator_code(self, prompt: Dict[str, Any]) -> Dict[str, Any]:
         """オペレーターコードを生成する。
 
         Args:
-            prompt: プロンプト情報
+            prompt: プロンプト
 
         Returns:
-            生成されたコードとクラス名を含む辞書
+            生成されたコード
         """
-        messages = [
-            {
-                "role": "system",
-                "content": """あなたはPythonオペレーターを生成するアシスタントです。
-以下の要件に従ってコードを生成してください：
-1. BaseOperatorを継承したクラスを作成
-2. 必要なメソッドを実装（execute, validate_input, get_output）
-3. 適切なエラーハンドリングを含める
-4. クリーンで読みやすいコードを生成
-5. 必要なインポートを含める
-6. データ分析に必要なライブラリ（pandas, numpy等）を使用する"""
-            },
-            {
-                "role": "user",
-                "content": f"""
-タスク: {prompt['task']}
-コンテキスト: {json.dumps(prompt['context'], ensure_ascii=False)}
-既知のオペレーター: {json.dumps(prompt['known_operators'], ensure_ascii=False)}
-生成戦略: {json.dumps(prompt['strategy'], ensure_ascii=False)}
+        messages = self._create_messages(
+            system_content="あなたはPythonオペレーターの生成の専門家です。",
+            user_content=f"""
+            以下の情報に基づいて、オペレーターコードを生成してください：
 
-Pythonコードを生成してください。
-"""
-            }
-        ]
+            タスク: {prompt['task']}
+            コンテキスト: {prompt['context']}
+            戦略: {prompt['strategy']}
+            既知のオペレーター: {prompt['known_operators']}
+            """
+        )
 
-        response = self._call_openai(messages, temperature=0.7)
+        response = self.client.chat.completions.create(
+            model=self.model,
+            messages=messages
+        )
+
+        operator_code = response.choices[0].message.content
+        if not operator_code:
+            operator_code = "class DefaultOperator(BaseOperator): pass"
         
-        # コードブロックを抽出
-        if "```python" in response:
-            start = response.find("```python") + 9
-            end = response.find("```", start)
-            if end != -1:
-                code = response[start:end].strip()
-            else:
-                code = response
-        elif "```" in response:
-            start = response.find("```") + 3
-            end = response.find("```", start)
-            if end != -1:
-                code = response[start:end].strip()
-            else:
-                code = response
-        else:
-            code = response.strip()
-        
-        # クラス名を抽出
-        import re
-        class_match = re.search(r"class\s+(\w+)\(", code)
-        if not class_match:
-            raise ValueError("No class definition found in generated code")
-        
-        class_name = class_match.group(1)
-        
+        # クラス名を抽出（最初のclassステートメントから）
+        class_name = "CustomOperator"  # デフォルト値
+        for line in operator_code.split("\n"):
+            if line.startswith("class "):
+                class_name = line.split()[1].split("(")[0]
+                break
+
         return {
-            "code": code,
+            "code": operator_code,
             "class_name": class_name
         }
 
-    def propose_operator_evolution(self, prompt: Dict[str, Any]) -> Dict[str, Any]:
-        """オペレーターの進化を提案する。
+    def evolve_operator(self, prompt: Dict[str, Any]) -> Dict[str, Any]:
+        """オペレーターを進化させる。
 
         Args:
-            prompt: 進化提案のためのプロンプト
+            prompt: プロンプト
 
         Returns:
-            進化の提案
+            進化したコード
         """
-        messages = [
-            {
-                "role": "system",
-                "content": (
-                    "あなたはAIシステムのオペレーター進化を提案する専門家です。"
-                    "現在のオペレーターの状態とパフォーマンスデータを分析し、改善案を提案してください。\n\n"
-                    "応答は必ず以下のJSON形式で返してください：\n"
-                    "{\n"
-                    '  "improvements": {\n'
-                    '    "logic_updates": ["更新1", "更新2"],\n'
-                    '    "parameter_adjustments": {"param1": "新しい値1"},\n'
-                    '    "new_features": ["機能1", "機能2"]\n'
-                    "  }\n"
-                    "}"
-                ),
-            },
-            {
-                "role": "user",
-                "content": json.dumps(prompt, ensure_ascii=False, indent=2),
-            },
-        ]
+        messages = self._create_messages(
+            system_content="あなたはPythonオペレーターの最適化の専門家です。",
+            user_content=f"""
+            以下の情報に基づいて、オペレーターを改善してください：
 
-        response = self._call_openai(messages, temperature=0.7)
-        return self.parse_json_response(response)
+            元のコード: {prompt['original_code']}
+            パフォーマンス: {prompt['performance']}
+            改善戦略: {prompt['strategy']}
+            改善フォーカス: {prompt['improvement_focus']}
+            """
+        )
 
-    def prioritize_tasks(self, context: Dict[str, Any]) -> Dict[str, Any]:
-        """タスクの優先順位付けを行う。"""
-        messages = [
-            {
-                "role": "system",
-                "content": (
-                    "タスクリストの優先順位を決定してください。"
-                    "応答は以下のJSON形式で返してください：\n"
-                    "{\n"
-                    '  "priorities": [\n'
-                    "    {\n"
-                    '      "task_id": "タスクID",\n'
-                    '      "priority": 1.0\n'
-                    "    }\n"
-                    "  ]\n"
-                    "}"
-                ),
-            },
-            {
-                "role": "user",
-                "content": json.dumps(context, ensure_ascii=False)
-            },
-        ]
+        response = self.client.chat.completions.create(
+            model=self.model,
+            messages=messages
+        )
 
-        response = self._call_openai(messages, temperature=0.3)
-        return self.parse_json_response(response)
+        evolved_code = response.choices[0].message.content
+        if not evolved_code:
+            evolved_code = prompt['original_code']
+        
+        # クラス名を抽出
+        class_name = "EvolvedOperator"  # デフォルト値
+        for line in evolved_code.split("\n"):
+            if line.startswith("class "):
+                class_name = line.split()[1].split("(")[0]
+                break
 
-    def evaluate_objective_completion(self, context: Dict[str, Any]) -> Dict[str, Any]:
-        """目標の達成状況を評価する。"""
-        messages = [
-            {
-                "role": "system",
-                "content": (
-                    "目標の達成状況を評価してください。"
-                    "応答は以下のJSON形式で返してください：\n"
-                    "{\n"
-                    '  "is_achieved": true/false,\n'
-                    '  "completion_rate": 0.0-1.0,\n'
-                    '  "recommendations": ["推奨アクション1"]\n'
-                    "}"
-                ),
-            },
-            {
-                "role": "user",
-                "content": json.dumps(context, ensure_ascii=False)
-            },
-        ]
+        return {
+            "code": evolved_code,
+            "class_name": class_name
+        }
 
-        response = self._call_openai(messages, temperature=0.3)
-        return self.parse_json_response(response)
-
-    def suggest_new_tasks(self, prompt: Dict[str, Any]) -> Dict[str, Any]:
-        """新しいタスクを提案する。
+    def analyze_task(self, prompt: Dict[str, Any]) -> Dict[str, Any]:
+        """タスクを分析する。
 
         Args:
-            prompt: タスク提案のためのプロンプト情報
-                - objective: システムの目標
-                - current_context: 現在のコンテキスト
-                - execution_history: 実行履歴
+            prompt: プロンプト
 
         Returns:
-            提案されたタスクのリスト
+            分析結果
         """
-        messages = [
-            {
-                "role": "system",
-                "content": (
-                    "あなたはAIシステムのタスク生成の専門家です。"
-                    "システムの目標、現在のコンテキスト、実行履歴を分析し、"
-                    "次に実行すべき新しいタスクを提案してください。\n\n"
-                    "応答は必ず以下のJSON形式で返してください：\n"
-                    "{\n"
-                    '  "suggested_tasks": [\n'
-                    "    {\n"
-                    '      "description": "タスクの説明",\n'
-                    '      "operator_type": "使用するオペレーターの種類",\n'
-                    '      "priority": 優先度（0-1の範囲）,\n'
-                    '      "params": {\n'
-                    '        "param1": "値1",\n'
-                    '        "param2": "値2"\n'
-                    "      },\n"
-                    '      "expected_outcomes": ["期待される結果1", "期待される結果2"],\n'
-                    '      "dependencies": ["依存タスク1", "依存タスク2"]\n'
-                    "    },\n"
-                    "    ...\n"
-                    "  ],\n"
-                    '  "analysis": {\n'
-                    '    "current_progress": "現在の進捗状況の分析",\n'
-                    '    "gaps": ["未対応の領域1", "未対応の領域2"],\n'
-                    '    "opportunities": ["改善機会1", "改善機会2"]\n'
-                    "  }\n"
-                    "}"
-                ),
-            },
-            {
-                "role": "user",
-                "content": json.dumps(prompt, ensure_ascii=False, indent=2),
-            },
-        ]
+        messages = self._create_messages(
+            system_content="あなたはタスク分析の専門家です。",
+            user_content=f"""
+            以下のタスクを分析し、必要なオペレータータイプとパラメータを特定してください：
 
-        response = self._call_openai(messages, temperature=0.7)
-        return self.parse_json_response(response)
+            タスク: {prompt.get('description', '')}
+            コンテキスト: {prompt.get('context', '')}
+            生成戦略: {prompt.get('generation_strategy', '')}
+            """
+        )
+
+        response = self.client.chat.completions.create(
+            model=self.model,
+            messages=messages
+        )
+
+        analysis_text = response.choices[0].message.content
+        if not analysis_text:
+            analysis_text = "デフォルトの分析結果を使用します。"
+        
+        # 分析結果をパースして返す
+        return {
+            "required_operator_type": "DataAnalysisOperator",  # デフォルトのオペレータータイプ
+            "required_params": {
+                "description": analysis_text,
+                "priority": 1.0,
+                "estimated_complexity": 0.5
+            }
+        }
 
     def generate_tasks(self, prompt: Dict[str, Any]) -> Dict[str, Any]:
-        """新しいタスクを生成する。"""
-        messages = [
+        """新しいタスクを生成する。
+
+        Args:
+            prompt: プロンプト
+
+        Returns:
+            生成されたタスク
+        """
+        # コンテキストを要約して短くする
+        execution_history_summary = []
+        if "execution_history" in prompt:
+            # 直近の5つの実行履歴のみを使用
+            history = prompt["execution_history"][-5:] if isinstance(prompt["execution_history"], list) else []
+            for item in history:
+                task_name = ""
+                if isinstance(item, dict):
+                    task_name = str(item.get("task", ""))
+                elif isinstance(item, str):
+                    task_name = str(item)
+                
+                if len(task_name) > 100:
+                    task_name = task_name[:100]
+                
+                execution_history_summary.append({
+                    "task": task_name,
+                    "status": item.get("status", "unknown") if isinstance(item, dict) else "unknown"
+                })
+
+        current_state_summary = {
+            "total_tasks": prompt.get("current_state", {}).get("total_tasks", 0),
+            "successful_tasks": prompt.get("current_state", {}).get("successful_tasks", 0),
+            "failed_tasks": prompt.get("current_state", {}).get("failed_tasks", 0)
+        }
+
+        context_str = str(prompt.get("context", ""))
+        if len(context_str) > 200:
+            context_str = context_str[:200]
+
+        messages = self._create_messages(
+            system_content="あなたはタスク生成の専門家です。",
+            user_content=f"""
+            以下の情報に基づいて、新しいタスクを生成してください：
+
+            目的: {prompt.get('objective', '')}
+            コンテキスト: {context_str}
+            直近の実行履歴: {execution_history_summary}
+            現在の状態: {current_state_summary}
+            """
+        )
+
+        response = self.client.chat.completions.create(
+            model=self.model,
+            messages=messages
+        )
+
+        task_text = response.choices[0].message.content
+        if not task_text:
+            task_text = "デフォルトのタスクを生成します。"
+
+        return {
+            "tasks": [
+                {
+                    "description": task_text,
+                    "operator_type": "DataAnalysisOperator",
+                    "priority": 1.0,
+                    "params": {}
+                }
+            ]
+        }
+
+    def prioritize_tasks(self, context: Dict[str, Any]) -> Dict[str, Any]:
+        """タスクの優先順位付けを行う。
+
+        Args:
+            context: コンテキスト
+
+        Returns:
+            優先順位付けの結果
+        """
+        # コンテキストを要約して短くする
+        current_tasks_summary = [
             {
-                "role": "system",
-                "content": (
-                    "目標とコンテキストに基づいて、次のタスクを生成してください。"
-                    "応答は以下のJSON形式で返してください：\n"
-                    "{\n"
-                    '  "tasks": [\n'
-                    "    {\n"
-                    '      "description": "タスクの説明",\n'
-                    '      "operator_type": "タスクの種類",\n'
-                    '      "priority": 1.0\n'
-                    "    }\n"
-                    "  ]\n"
-                    "}"
-                ),
-            },
-            {
-                "role": "user",
-                "content": json.dumps(prompt, ensure_ascii=False)
-            },
+                "id": task.get("id", "unknown"),
+                "description": str(task.get("description", ""))[:100] if task.get("description") else ""
+            }
+            for task in context.get("current_tasks", [])
         ]
 
-        response = self._call_openai(messages, temperature=0.7)
-        return self.parse_json_response(response) 
+        # 完了タスクの要約を作成
+        completed_tasks = context.get("completed_tasks", [])[-5:]  # 直近5つのタスクを取得
+        completed_tasks_summary = []
+        for task in completed_tasks:
+            if isinstance(task, str):
+                completed_tasks_summary.append(task[:100])
+            elif isinstance(task, dict):
+                task_str = str(task.get("task_name", "")) if task.get("task_name") else str(task)
+                completed_tasks_summary.append(task_str[:100])
+
+        messages = self._create_messages(
+            system_content="あなたはタスクの優先順位付けの専門家です。",
+            user_content=f"""
+            以下の情報に基づいて、タスクの優先順位を決定してください：
+
+            目的: {context.get('objective', '')}
+            現在のタスク: {current_tasks_summary}
+            直近の完了タスク: {completed_tasks_summary}
+            """
+        )
+
+        response = self.client.chat.completions.create(
+            model=self.model,
+            messages=messages
+        )
+
+        priority_text = response.choices[0].message.content
+        if not priority_text:
+            # デフォルトの優先順位を返す
+            return {
+                "priorities": [
+                    {"task_id": task.get("id", "unknown"), "priority": 1.0}
+                    for task in context.get("current_tasks", [])
+                ]
+            }
+
+        return {
+            "priorities": [
+                {"task_id": task.get("id", "unknown"), "priority": 1.0}
+                for task in context.get("current_tasks", [])
+            ]
+        }
+
+    def evaluate_objective_completion(self, context: Dict[str, Any]) -> Dict[str, Any]:
+        """目的の達成状況を評価する。
+
+        Args:
+            context: コンテキスト
+
+        Returns:
+            評価結果
+        """
+        messages = self._create_messages(
+            system_content="あなたは目的達成の評価の専門家です。",
+            user_content=f"""
+            以下の情報に基づいて、目的の達成状況を評価してください：
+
+            目的: {context['objective']}
+            実行履歴: {context['execution_history']}
+            パフォーマンス指標: {context['performance_metrics']}
+            """
+        )
+
+        response = self.client.chat.completions.create(
+            model=self.model,
+            messages=messages
+        )
+
+        evaluation_text = response.choices[0].message.content
+        if not evaluation_text:
+            return {"is_achieved": False}
+
+        return {
+            "is_achieved": False,  # デフォルトではFalse
+            "completion_rate": 0.0,
+            "analysis": evaluation_text
+        } 

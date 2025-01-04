@@ -11,7 +11,7 @@ from genesis_agi.utils.cache import Cache
 def setup_logging() -> None:
     """ロギングの設定を行う。"""
     logging.basicConfig(
-        level=logging.INFO,
+        level=logging.DEBUG,
         format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
         handlers=[
             logging.StreamHandler(),  # 標準出力へのハンドラ
@@ -133,6 +133,7 @@ def main():
         
         print("\n生成戦略:")
         for strategy_name, strategy in meta_knowledge["generation_strategies"].items():
+            print(f"strategy: {strategy}")
             print(f"\n戦略名: {strategy_name}")
             if hasattr(strategy, 'success_rate'):
                 print(f"成功率: {strategy.success_rate:.2f}")

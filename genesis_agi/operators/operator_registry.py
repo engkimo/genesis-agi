@@ -1,59 +1,59 @@
-"""Operator registry for managing and tracking operators."""
-from typing import Dict, Type, List, Optional
-from .base_operator import BaseOperator
+"""オペレーターの登録と管理を行うレジストリ。"""
+from typing import Dict, Type, Optional
+from genesis_agi.operators.base_operator import BaseOperator
 
 
 class OperatorRegistry:
     """オペレーターの登録と管理を行うクラス。"""
-    
+
     def __init__(self):
-        """Initialize the operator registry."""
+        """初期化。"""
         self._operators: Dict[str, Type[BaseOperator]] = {}
-        self._dependencies: Dict[str, List[str]] = {}
-    
-    def register_operator(self, operator_class: Type[BaseOperator], dependencies: Optional[List[str]] = None) -> None:
-        """新しいオペレーターを登録する。
+        self._initialize_default_operators()
+
+    def _initialize_default_operators(self) -> None:
+        """デフォルトのオペレーターを初期化する。"""
+        from genesis_agi.operators.data_analysis_operator import DataAnalysisOperator
+        from genesis_agi.operators.recommendation_operator import RecommendationOperator
+        
+        self.register_operator(DataAnalysisOperator)
+        self.register_operator(RecommendationOperator)
+
+    def register_operator(self, operator_class: Type[BaseOperator]) -> None:
+        """オペレーターを登録する。
 
         Args:
             operator_class: 登録するオペレータークラス
-            dependencies: 依存するオペレーターのリスト
         """
-        operator_name = operator_class.__name__
-        self._operators[operator_name] = operator_class
-        if dependencies:
-            self._dependencies[operator_name] = dependencies
-    
-    def get_operator(self, operator_name: str) -> Type[BaseOperator]:
-        """指定された名前のオペレーターを取得する。
+        operator_type = operator_class.__name__
+        self._operators[operator_type] = operator_class
+
+    def get_operator(self, operator_type: str) -> Optional[Type[BaseOperator]]:
+        """オペレーターを取得する。
 
         Args:
-            operator_name: オペレーターの名前
+            operator_type: オペレータータイプ
 
         Returns:
             オペレータークラス
-
-        Raises:
-            KeyError: 指定された名前のオペレーターが存在しない場合
         """
-        if operator_name not in self._operators:
-            raise KeyError(f"Operator {operator_name} not found in registry")
-        return self._operators[operator_name]
-    
-    def list_operators(self) -> List[str]:
-        """登録されているオペレーターの一覧を返す。
+        return self._operators.get(operator_type)
 
-        Returns:
-            オペレーター名のリスト
-        """
-        return list(self._operators.keys())
-    
-    def get_dependencies(self, operator_name: str) -> List[str]:
-        """指定されたオペレーターの依存関係を取得する。
+    def has_operator(self, operator_type: str) -> bool:
+        """指定されたタイプのオペレーターが存在するかどうかを確認する。
 
         Args:
-            operator_name: オペレーターの名前
+            operator_type: オペレータータイプ
 
         Returns:
-            依存するオペレーターのリスト
+            オペレーターが存在する場合はTrue
         """
-        return self._dependencies.get(operator_name, []) 
+        return operator_type in self._operators
+
+    def list_operators(self) -> Dict[str, Type[BaseOperator]]:
+        """登録されているオペレーターの一覧を取得する。
+
+        Returns:
+            オペレーターの一覧
+        """
+        return self._operators.copy() 
