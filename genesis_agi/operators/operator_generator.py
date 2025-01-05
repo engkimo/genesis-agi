@@ -1,194 +1,206 @@
-"""オペレーターの動的生成と進化を管理するモジュール。"""
-from typing import Dict, Any, List, Type, Optional
+"""オペレーター生成モジュール。"""
+from typing import Any, Dict, List, Optional, Type
+import logging
 import inspect
+import json
 from genesis_agi.llm.client import LLMClient
-from genesis_agi.operators.base_operator import BaseOperator
 from genesis_agi.operators.operator_registry import OperatorRegistry
+from genesis_agi.utils.cache import Cache
+from genesis_agi.operators.base_operator import BaseOperator
+
+logger = logging.getLogger(__name__)
 
 
 class OperatorGenerator:
-    """オペレーターの動的生成と進化を管理するクラス。"""
+    """オペレーターを動的に生成するジェネレーター。"""
 
-    def __init__(self, llm_client: LLMClient, registry: OperatorRegistry):
-        """初期化。
-
-        Args:
-            llm_client: LLMクライアント
-            registry: オペレーターレジストリ
-        """
+    def __init__(
+        self,
+        llm_client: LLMClient,
+        registry: OperatorRegistry,
+        cache: Optional[Cache] = None
+    ):
+        """初期化。"""
         self.llm_client = llm_client
         self.registry = registry
-        self.operator_specs: Dict[str, Dict[str, Any]] = {}
-        self.evolution_history: List[Dict[str, Any]] = []
+        self.cache = cache
 
-    def generate_operator(self, task_description: str, context: Dict[str, Any]) -> Type[BaseOperator]:
-        """タスクの説明からオペレーターを生成する。
+    def generate_operator(
+        self,
+        task_description: str,
+        current_context: Dict[str, Any],
+        generation_strategy: Dict[str, Any]
+    ) -> Type[BaseOperator]:
+        """タスクに適したオペレーターを生成する。
 
         Args:
             task_description: タスクの説明
-            context: 現在のコンテキスト
+            current_context: 現在のコンテキスト
+            generation_strategy: 生成戦略
 
         Returns:
             生成されたオペレータークラス
         """
-        # LLMにオペレーターの仕様を生成させる
-        operator_spec = self._generate_operator_spec(task_description, context)
-        
-        # オペレーターコードの生成
-        operator_code = self._generate_operator_code(operator_spec)
-        
-        # オペレーターの動的生成と検証
+        # キャッシュをチェック
+        cache_key = f"operator:{task_description}"
+        if self.cache:
+            cached_operator = self._load_from_cache(cache_key)
+            if cached_operator:
+                return cached_operator
+
+        # オペレータータイプを生成
+        operator_type = self._generate_operator_type(task_description)
+
+        # 既存のオペレーターをチェック
+        if self.registry.has_operator(operator_type):
+            existing_operator = self.registry.get_operator(operator_type)
+            if existing_operator:
+                return existing_operator
+
+        # オペレーターコードを生成
+        operator_code = self._generate_operator_code(
+            task_description,
+            current_context,
+            generation_strategy
+        )
+
+        # オペレータークラスを動的に生成
         operator_class = self._create_operator_class(operator_code)
-        
-        # 生成履歴の保存
-        self.operator_specs[operator_spec["name"]] = operator_spec
-        
+
+        # オペレーターを登録
+        self.registry.register_operator(
+            operator_class,
+            description=task_description
+        )
+
+        # キャッシュに保存
+        if self.cache:
+            self._save_to_cache(cache_key, operator_class)
+
         return operator_class
 
-    def _generate_operator_spec(self, task_description: str, context: Dict[str, Any]) -> Dict[str, Any]:
-        """オペレーターの仕様を生成する。
+    def _generate_operator_type(self, task_description: str) -> str:
+        """タスクの説明からオペレータータイプを生成する。
 
         Args:
             task_description: タスクの説明
-            context: 現在のコンテキスト
 
         Returns:
-            オペレーターの仕様
+            オペレータータイプ
         """
-        prompt = {
-            "task": task_description,
-            "context": context,
-            "objective": context.get("objective", ""),
-            "completed_tasks": context.get("completed_tasks", []),
-            "current_state": context.get("current_state", {})
-        }
+        # LLMを使用してオペレータータイプを生成
+        messages = [
+            {"role": "system", "content": "あなたはオペレーター名の生成の専門家です。"},
+            {"role": "user", "content": f"""
+            以下のタスクに適したオペレーター名を生成してください。
+            名前は英語で、CamelCase形式で、最後に'Operator'を付けてください。
+            
+            タスク: {task_description}
+            """}
+        ]
         
-        # LLMに仕様の生成を依頼
-        response = self.llm_client.generate_operator_spec(prompt)
+        response = self.llm_client.chat_completion(messages)
+        operator_type = response.choices[0].message.content.strip()
         
-        return {
-            "name": response["operator_name"],
-            "description": response["description"],
-            "inputs": response["required_inputs"],
-            "outputs": response["expected_outputs"],
-            "logic": response["processing_logic"],
-            "next_tasks": response["potential_next_tasks"]
-        }
+        # 'Operator'で終わっていない場合は追加
+        if not operator_type.endswith('Operator'):
+            operator_type += 'Operator'
+        
+        return operator_type
 
-    def _generate_operator_code(self, spec: Dict[str, Any]) -> str:
+    def _generate_operator_code(
+        self,
+        task_description: str,
+        current_context: Dict[str, Any],
+        generation_strategy: Dict[str, Any]
+    ) -> str:
         """オペレーターのコードを生成する。
 
         Args:
-            spec: オペレーターの仕様
+            task_description: タスクの説明
+            current_context: 現在のコンテキスト
+            generation_strategy: 生成戦略
 
         Returns:
-            生成されたPythonコード
+            生成されたコード
         """
-        prompt = {
-            "spec": spec,
-            "base_class": inspect.getsource(BaseOperator),
-            "example_operators": self._get_example_operators()
-        }
+        messages = [
+            {"role": "system", "content": "あなたはPythonコードジェネレーターの専門家です。"},
+            {"role": "user", "content": f"""
+            以下の要件に基づいて、BaseOperatorを継承したオペレータークラスを生成してください。
+
+            タスク: {task_description}
+            コンテキスト: {json.dumps(current_context, ensure_ascii=False)}
+            生成戦略: {json.dumps(generation_strategy, ensure_ascii=False)}
+
+            以下の要件を満たすコードを生成してください：
+            1. BaseOperatorを継承すること
+            2. 必要なメソッドをすべて実装すること（execute, validate_input, get_required_inputs）
+            3. エラーハンドリングを適切に行うこと
+            4. ログ出力を適切に行うこと
+            5. 型ヒントを使用すること
+            """}
+        ]
         
-        # LLMにコードの生成を依頼
-        response = self.llm_client.generate_operator_code(prompt)
-        return response["code"]
+        response = self.llm_client.chat_completion(messages)
+        return response.choices[0].message.content.strip()
 
     def _create_operator_class(self, code: str) -> Type[BaseOperator]:
-        """オペレーターのコードからクラスを生成する。
+        """コードからオペレータークラスを生成する。
 
         Args:
-            code: Pythonコード
+            code: オペレーターのコード
 
         Returns:
             生成されたオペレータークラス
+
+        Raises:
+            ValueError: コードが不正な場合
         """
-        # コードの実行環境を準備
-        namespace = {"BaseOperator": BaseOperator}
-        
-        # コードの実行
-        exec(code, namespace)
-        
-        # 生成されたクラスを取得
-        operator_class = next(
-            obj for name, obj in namespace.items()
-            if isinstance(obj, type) and issubclass(obj, BaseOperator)
-        )
-        
-        return operator_class
+        try:
+            # 名前空間を準備
+            namespace = {}
+            
+            # 必要なインポートを追加
+            exec('from genesis_agi.operators.base_operator import BaseOperator', namespace)
+            exec('import logging', namespace)
+            
+            # コードを実行
+            exec(code, namespace)
+            
+            # クラスを取得
+            for name, obj in namespace.items():
+                if (isinstance(obj, type) and 
+                    issubclass(obj, BaseOperator) and 
+                    obj != BaseOperator):
+                    return obj
+            
+            raise ValueError('有効なオペレータークラスが見つかりません')
+            
+        except Exception as e:
+            logger.error(f'オペレータークラスの生成に失敗: {str(e)}')
+            raise ValueError(f'オペレータークラスの生成に失敗: {str(e)}')
 
-    def evolve_operator(self, operator_name: str, performance_data: Dict[str, Any]) -> Type[BaseOperator]:
-        """オペレーターを進化させる。
+    def _load_from_cache(self, key: str) -> Optional[Type[BaseOperator]]:
+        """キャッシュからオペレーターを読み込む。"""
+        if not self.cache:
+            return None
+        
+        cached_data = self.cache.get(key)
+        if cached_data:
+            try:
+                return self._create_operator_class(cached_data)
+            except Exception as e:
+                logger.warning(f'キャッシュからのオペレーター読み込みに失敗: {str(e)}')
+        return None
 
-        Args:
-            operator_name: オペレーターの名前
-            performance_data: パフォーマンスデータ
-
-        Returns:
-            進化したオペレータークラス
-        """
-        original_spec = self.operator_specs[operator_name]
+    def _save_to_cache(self, key: str, operator_class: Type[BaseOperator]) -> None:
+        """オペレーターをキャッシュに保存する。"""
+        if not self.cache:
+            return
         
-        # 進化の提案をLLMに依頼
-        evolution_prompt = {
-            "original_spec": original_spec,
-            "performance_data": performance_data,
-            "evolution_history": self.evolution_history
-        }
-        
-        response = self.llm_client.propose_operator_evolution(evolution_prompt)
-        
-        # 新しい仕様でオペレーターを再生成
-        evolved_spec = {**original_spec, **response["improvements"]}
-        evolved_code = self._generate_operator_code(evolved_spec)
-        evolved_operator = self._create_operator_class(evolved_code)
-        
-        # 進化の履歴を記録
-        self.evolution_history.append({
-            "operator_name": operator_name,
-            "original_spec": original_spec,
-            "evolved_spec": evolved_spec,
-            "performance_data": performance_data,
-            "improvements": response["improvements"]
-        })
-        
-        # 仕様を更新
-        self.operator_specs[operator_name] = evolved_spec
-        
-        return evolved_operator
-
-    def _get_example_operators(self) -> List[str]:
-        """既存のオペレーターのコードを取得する。
-
-        Returns:
-            オペレーターのコードのリスト
-        """
-        example_codes = []
-        for operator_class in self.registry._operators.values():
-            example_codes.append(inspect.getsource(operator_class))
-        return example_codes
-
-    def analyze_operator_chain(self, execution_history: List[Dict[str, Any]]) -> Dict[str, Any]:
-        """オペレーターチェーンの分析を行う。
-
-        Args:
-            execution_history: 実行履歴
-
-        Returns:
-            分析結果
-        """
-        prompt = {
-            "execution_history": execution_history,
-            "operator_specs": self.operator_specs,
-            "evolution_history": self.evolution_history
-        }
-        
-        # LLMにチェーンの分析を依頼
-        response = self.llm_client.analyze_operator_chain(prompt)
-        
-        return {
-            "efficiency": response["efficiency_score"],
-            "bottlenecks": response["bottlenecks"],
-            "improvement_suggestions": response["suggestions"],
-            "optimal_chain": response["optimal_chain"]
-        } 
+        try:
+            code = inspect.getsource(operator_class)
+            self.cache.set(key, code)
+        except Exception as e:
+            logger.warning(f'オペレーターのキャッシュ保存に失敗: {str(e)}') 

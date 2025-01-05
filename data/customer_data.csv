@@ -1,0 +1,10 @@
+customer_id,date,product_id,amount,category
+1,2024-01-01,P001,1500,Electronics
+1,2024-01-02,P002,800,Books
+2,2024-01-01,P003,2000,Electronics
+2,2024-01-03,P001,1500,Electronics
+3,2024-01-02,P004,300,Food
+3,2024-01-03,P005,1200,Clothing
+4,2024-01-01,P002,800,Books
+4,2024-01-02,P004,300,Food
+5,2024-01-03,P003,2000,Electronics 

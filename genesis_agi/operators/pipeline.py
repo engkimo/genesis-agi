@@ -1,8 +1,8 @@
 """Operator execution pipeline management."""
-from typing import Dict, List, Any, Optional
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from typing import Any, Dict, List, Optional
+
 from .operator_registry import OperatorRegistry
-from .base_operator import BaseOperator
 
 
 class Pipeline:
@@ -86,4 +86,4 @@ class Pipeline:
         Returns:
             エラーの辞書
         """
-        return self.errors 
+        return self.errors

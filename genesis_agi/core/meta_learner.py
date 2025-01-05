@@ -1,6 +1,6 @@
 """メタ学習システム。"""
 from typing import Dict, Any, List, Optional, Type
-from dataclasses import dataclass
+from dataclasses import dataclass, asdict
 import numpy as np
 from genesis_agi.llm.client import LLMClient
 from genesis_agi.operators.base_operator import BaseOperator
@@ -15,6 +15,20 @@ class GenerationStrategy:
     avg_performance: float
     usage_count: int
 
+    def to_dict(self) -> Dict[str, Any]:
+        """辞書形式に変換する。
+
+        Returns:
+            辞書形式のデータ
+        """
+        return {
+            "strategy_name": self.strategy_name,
+            "parameters": self.parameters,
+            "success_rate": self.success_rate,
+            "avg_performance": self.avg_performance,
+            "usage_count": self.usage_count
+        }
+
 
 @dataclass
 class EvolutionPattern:
@@ -24,6 +38,20 @@ class EvolutionPattern:
     evolved_state: Dict[str, Any]
     performance_improvement: float
     context: Dict[str, Any]
+
+    def to_dict(self) -> Dict[str, Any]:
+        """辞書形式に変換する。
+
+        Returns:
+            辞書形式のデータ
+        """
+        return {
+            "pattern_name": self.pattern_name,
+            "initial_state": self.initial_state,
+            "evolved_state": self.evolved_state,
+            "performance_improvement": self.performance_improvement,
+            "context": self.context
+        }
 
 
 class MetaLearner:
@@ -68,12 +96,26 @@ class MetaLearner:
         if previous_results:
             self._update_strategy_performance(previous_results)
         
+        # メタ知識をJSONシリアライズ可能な形式に変換
+        prepared_meta_knowledge = {
+            "successful_patterns": [
+                pattern.to_dict() if isinstance(pattern, EvolutionPattern) else pattern
+                for pattern in self.meta_knowledge["successful_patterns"]
+            ],
+            "failed_patterns": [
+                pattern.to_dict() if isinstance(pattern, EvolutionPattern) else pattern
+                for pattern in self.meta_knowledge["failed_patterns"]
+            ],
+            "context_dependencies": self.meta_knowledge["context_dependencies"],
+            "performance_correlations": self.meta_knowledge["performance_correlations"]
+        }
+        
         # LLMを使用して戦略を最適化
         optimization_prompt = {
             "task": task_description,
-            "context": context,
+            "context": self._prepare_context_for_json(context),
             "best_strategies": best_strategies,
-            "meta_knowledge": self.meta_knowledge
+            "meta_knowledge": prepared_meta_knowledge
         }
         
         response = self.llm_client.optimize_generation_strategy(optimization_prompt)
@@ -161,14 +203,14 @@ class MetaLearner:
         response = self.llm_client.generate_evolution_strategy(strategy_prompt)
         return response["strategy"]
 
-    def _select_best_strategies(self, context: Dict[str, Any]) -> List[GenerationStrategy]:
+    def _select_best_strategies(self, context: Dict[str, Any]) -> List[Dict[str, Any]]:
         """コンテキストに最も適した戦略を選択する。
 
         Args:
             context: 現在のコンテキスト
 
         Returns:
-            選択された戦略のリスト
+            選択された戦略のリスト（辞書形式）
         """
         scored_strategies = []
         for strategy in self.generation_strategies.values():
@@ -176,7 +218,7 @@ class MetaLearner:
             scored_strategies.append((score, strategy))
         
         scored_strategies.sort(reverse=True, key=lambda x: x[0])
-        return [strategy for _, strategy in scored_strategies[:3]]
+        return [strategy.to_dict() for _, strategy in scored_strategies[:3]]
 
     def _calculate_strategy_score(self, strategy: GenerationStrategy, context: Dict[str, Any]) -> float:
         """戦略のスコアを計算する。
@@ -214,8 +256,8 @@ class MetaLearner:
         """
         # LLMを使用してコンテキストの意味的類似性を計算
         similarity_prompt = {
-            "context1": context1,
-            "context2": context2
+            "context1": self._prepare_context_for_json(context1),
+            "context2": self._prepare_context_for_json(context2)
         }
         response = self.llm_client.calculate_context_similarity(similarity_prompt)
         return float(response["similarity_score"])
@@ -335,3 +377,27 @@ class MetaLearner:
         }
         response = self.llm_client.calculate_pattern_similarity(similarity_prompt)
         return float(response["similarity_score"]) 
+
+    def _prepare_context_for_json(self, context: Dict[str, Any]) -> Dict[str, Any]:
+        """JSONシリアライズ用にコンテキストを準備する。
+
+        Args:
+            context: 準備するコンテキスト
+
+        Returns:
+            JSONシリアライズ可能なコンテキスト
+        """
+        prepared_context = {}
+        for key, value in context.items():
+            if isinstance(value, (GenerationStrategy, EvolutionPattern)):
+                prepared_context[key] = value.to_dict()
+            elif isinstance(value, dict):
+                prepared_context[key] = self._prepare_context_for_json(value)
+            elif isinstance(value, list):
+                prepared_context[key] = [
+                    item.to_dict() if isinstance(item, (GenerationStrategy, EvolutionPattern)) else item
+                    for item in value
+                ]
+            else:
+                prepared_context[key] = value
+        return prepared_context 

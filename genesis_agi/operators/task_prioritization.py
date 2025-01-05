@@ -87,7 +87,7 @@ class TaskPrioritizationOperator(BaseOperator):
             task_id = task_info["id"]
             for task in task_list:
                 if task.id == task_id:
-                    task.priority = task_info["priority"]
+                    task.priority = int(task_info["priority"])
                     if not task.metadata:
                         task.metadata = {}
                     task.metadata["prioritization_reason"] = task_info["reason"]
