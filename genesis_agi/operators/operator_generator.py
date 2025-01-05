@@ -2,6 +2,7 @@
 from typing import Any, Dict, List, Optional, Type
 import logging
 import inspect
+import json
 from genesis_agi.llm.client import LLMClient
 from genesis_agi.operators.operator_registry import OperatorRegistry
 from genesis_agi.utils.cache import Cache
@@ -47,154 +48,159 @@ class OperatorGenerator:
             if cached_operator:
                 return cached_operator
 
-        # LLMを使用してオペレーターを生成
-        prompt = {
-            "task": task_description,
-            "context": current_context,
-            "strategy": generation_strategy,
-            "known_operators": [
-                self._get_operator_code(op)
-                for op in self.registry.list_operators().values()
-            ]
-        }
-        
-        response = self.llm_client.generate_operator_code(prompt)
-        operator_code = response["code"]
-        
+        # オペレータータイプを生成
+        operator_type = self._generate_operator_type(task_description)
+
+        # 既存のオペレーターをチェック
+        if self.registry.has_operator(operator_type):
+            existing_operator = self.registry.get_operator(operator_type)
+            if existing_operator:
+                return existing_operator
+
+        # オペレーターコードを生成
+        operator_code = self._generate_operator_code(
+            task_description,
+            current_context,
+            generation_strategy
+        )
+
         # オペレータークラスを動的に生成
-        namespace = {}
-        exec(operator_code, namespace)
-        operator_class = namespace[response["class_name"]]
-        
-        # 生成されたクラスの検証
-        if not self._validate_operator_class(operator_class):
-            raise ValueError("生成されたオペレーターが無効です")
+        operator_class = self._create_operator_class(operator_code)
+
+        # オペレーターを登録
+        self.registry.register_operator(
+            operator_class,
+            description=task_description
+        )
 
         # キャッシュに保存
         if self.cache:
-            self._save_to_cache(cache_key, operator_code, response["class_name"])
-        
+            self._save_to_cache(cache_key, operator_class)
+
         return operator_class
 
-    def evolve_operator(
+    def _generate_operator_type(self, task_description: str) -> str:
+        """タスクの説明からオペレータータイプを生成する。
+
+        Args:
+            task_description: タスクの説明
+
+        Returns:
+            オペレータータイプ
+        """
+        # LLMを使用してオペレータータイプを生成
+        messages = [
+            {"role": "system", "content": "あなたはオペレーター名の生成の専門家です。"},
+            {"role": "user", "content": f"""
+            以下のタスクに適したオペレーター名を生成してください。
+            名前は英語で、CamelCase形式で、最後に'Operator'を付けてください。
+            
+            タスク: {task_description}
+            """}
+        ]
+        
+        response = self.llm_client.chat_completion(messages)
+        operator_type = response.choices[0].message.content.strip()
+        
+        # 'Operator'で終わっていない場合は追加
+        if not operator_type.endswith('Operator'):
+            operator_type += 'Operator'
+        
+        return operator_type
+
+    def _generate_operator_code(
         self,
-        operator_type: str,
-        performance_data: Dict[str, Any],
-        evolution_strategy: Dict[str, Any]
-    ) -> Type[BaseOperator]:
-        """既存のオペレーターを進化させる。
+        task_description: str,
+        current_context: Dict[str, Any],
+        generation_strategy: Dict[str, Any]
+    ) -> str:
+        """オペレーターのコードを生成する。
 
         Args:
-            operator_type: オペレーターの種類
-            performance_data: パフォーマンスデータ
-            evolution_strategy: 進化戦略
+            task_description: タスクの説明
+            current_context: 現在のコンテキスト
+            generation_strategy: 生成戦略
 
         Returns:
-            進化したオペレータークラス
+            生成されたコード
         """
-        # 元のオペレーターを取得
-        original_operator = self.registry.get_operator(operator_type)
-        if not original_operator:
-            raise ValueError(f"オペレーター {operator_type} が見つかりません")
+        messages = [
+            {"role": "system", "content": "あなたはPythonコードジェネレーターの専門家です。"},
+            {"role": "user", "content": f"""
+            以下の要件に基づいて、BaseOperatorを継承したオペレータークラスを生成してください。
 
-        # LLMを使用してオペレーターを進化
-        prompt = {
-            "original_code": self._get_operator_code(original_operator),
-            "performance": performance_data,
-            "strategy": evolution_strategy,
-            "improvement_focus": evolution_strategy["improvement_focus"]
-        }
-        
-        response = self.llm_client.evolve_operator(prompt)
-        evolved_code = response["code"]
-        
-        # 進化したオペレータークラスを動的に生成
-        namespace = {}
-        exec(evolved_code, namespace)
-        evolved_operator = namespace[response["class_name"]]
-        
-        # 進化したクラスの検証
-        if not self._validate_operator_class(evolved_operator):
-            raise ValueError("進化したオペレーターが無効です")
-        
-        return evolved_operator
+            タスク: {task_description}
+            コンテキスト: {json.dumps(current_context, ensure_ascii=False)}
+            生成戦略: {json.dumps(generation_strategy, ensure_ascii=False)}
 
-    def _validate_operator_class(self, operator_class: Type[BaseOperator]) -> bool:
-        """オペレータークラスを検証する。
+            以下の要件を満たすコードを生成してください：
+            1. BaseOperatorを継承すること
+            2. 必要なメソッドをすべて実装すること（execute, validate_input, get_required_inputs）
+            3. エラーハンドリングを適切に行うこと
+            4. ログ出力を適切に行うこと
+            5. 型ヒントを使用すること
+            """}
+        ]
+        
+        response = self.llm_client.chat_completion(messages)
+        return response.choices[0].message.content.strip()
+
+    def _create_operator_class(self, code: str) -> Type[BaseOperator]:
+        """コードからオペレータークラスを生成する。
 
         Args:
-            operator_class: 検証するオペレータークラス
+            code: オペレーターのコード
 
         Returns:
-            検証結果
+            生成されたオペレータークラス
+
+        Raises:
+            ValueError: コードが不正な場合
         """
-        # 必要なメソッドの存在を確認
-        required_methods = ["execute", "get_required_context", "validate_result"]
-        for method in required_methods:
-            if not hasattr(operator_class, method):
-                return False
-
-        # BaseOperatorを継承していることを確認
-        if not issubclass(operator_class, BaseOperator):
-            return False
-
-        return True
-
-    def _get_operator_code(self, operator_class: Type[BaseOperator]) -> str:
-        """オペレータークラスのソースコードを取得する。
-
-        Args:
-            operator_class: オペレータークラス
-
-        Returns:
-            ソースコード
-        """
-        return inspect.getsource(operator_class)
-
-    def _save_to_cache(
-        self,
-        cache_key: str,
-        operator_code: str,
-        class_name: str
-    ) -> None:
-        """オペレーターをキャッシュに保存する。
-
-        Args:
-            cache_key: キャッシュキー
-            operator_code: オペレーターのコード
-            class_name: クラス名
-        """
-        if not self.cache:
-            return
-
         try:
-            cache_data = {
-                "code": operator_code,
-                "class_name": class_name
-            }
-            self.cache.set(cache_key, cache_data)
+            # 名前空間を準備
+            namespace = {}
+            
+            # 必要なインポートを追加
+            exec('from genesis_agi.operators.base_operator import BaseOperator', namespace)
+            exec('import logging', namespace)
+            
+            # コードを実行
+            exec(code, namespace)
+            
+            # クラスを取得
+            for name, obj in namespace.items():
+                if (isinstance(obj, type) and 
+                    issubclass(obj, BaseOperator) and 
+                    obj != BaseOperator):
+                    return obj
+            
+            raise ValueError('有効なオペレータークラスが見つかりません')
+            
         except Exception as e:
-            logger.warning(f"キャッシュの保存に失敗しました: {str(e)}")
+            logger.error(f'オペレータークラスの生成に失敗: {str(e)}')
+            raise ValueError(f'オペレータークラスの生成に失敗: {str(e)}')
 
-    def _load_from_cache(self, cache_key: str) -> Optional[Type[BaseOperator]]:
-        """キャッシュからオペレーターを読み込む。
-
-        Args:
-            cache_key: キャッシュキー
-
-        Returns:
-            キャッシュされたオペレータークラス
-        """
+    def _load_from_cache(self, key: str) -> Optional[Type[BaseOperator]]:
+        """キャッシュからオペレーターを読み込む。"""
         if not self.cache:
             return None
-
-        try:
-            cached_data = self.cache.get(cache_key)
-            if cached_data:
-                namespace = {}
-                exec(cached_data["code"], namespace)
-                return namespace[cached_data["class_name"]]
-        except Exception as e:
-            logger.warning(f"キャッシュの読み込みに失敗しました: {str(e)}")
         
-        return None 
+        cached_data = self.cache.get(key)
+        if cached_data:
+            try:
+                return self._create_operator_class(cached_data)
+            except Exception as e:
+                logger.warning(f'キャッシュからのオペレーター読み込みに失敗: {str(e)}')
+        return None
+
+    def _save_to_cache(self, key: str, operator_class: Type[BaseOperator]) -> None:
+        """オペレーターをキャッシュに保存する。"""
+        if not self.cache:
+            return
+        
+        try:
+            code = inspect.getsource(operator_class)
+            self.cache.set(key, code)
+        except Exception as e:
+            logger.warning(f'オペレーターのキャッシュ保存に失敗: {str(e)}') 

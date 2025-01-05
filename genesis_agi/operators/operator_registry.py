@@ -1,43 +1,24 @@
 """オペレーターの登録と管理を行うレジストリ。"""
-from typing import Dict, Type, Optional
+from typing import Dict, Type, Optional, List
+import json
+import inspect
+from sqlalchemy.orm import Session
 from genesis_agi.operators.base_operator import BaseOperator
+from genesis_agi.models.operator import Operator
+from genesis_agi.utils.code_loader import load_operator_from_code
 
 
 class OperatorRegistry:
     """オペレーターの登録と管理を行うクラス。"""
 
-    def __init__(self):
-        """初期化。"""
-        self._operators: Dict[str, Type[BaseOperator]] = {}
-        self._initialize_default_operators()
-
-    def _initialize_default_operators(self) -> None:
-        """デフォルトのオペレーターを初期化する。"""
-        from genesis_agi.operators.data_analysis_operator import DataAnalysisOperator
-        from genesis_agi.operators.recommendation_operator import RecommendationOperator
-        
-        self.register_operator(DataAnalysisOperator)
-        self.register_operator(RecommendationOperator)
-
-    def register_operator(self, operator_class: Type[BaseOperator]) -> None:
-        """オペレーターを登録する。
+    def __init__(self, db_session: Session):
+        """初期化。
 
         Args:
-            operator_class: 登録するオペレータークラス
+            db_session: データベースセッション
         """
-        operator_type = operator_class.__name__
-        self._operators[operator_type] = operator_class
-
-    def get_operator(self, operator_type: str) -> Optional[Type[BaseOperator]]:
-        """オペレーターを取得する。
-
-        Args:
-            operator_type: オペレータータイプ
-
-        Returns:
-            オペレータークラス
-        """
-        return self._operators.get(operator_type)
+        self.db_session = db_session
+        self._operator_cache: Dict[str, Type[BaseOperator]] = {}
 
     def has_operator(self, operator_type: str) -> bool:
         """指定されたタイプのオペレーターが存在するかどうかを確認する。
@@ -48,12 +29,113 @@ class OperatorRegistry:
         Returns:
             オペレーターが存在する場合はTrue
         """
-        return operator_type in self._operators
+        # キャッシュをチェック
+        if operator_type in self._operator_cache:
+            return True
 
-    def list_operators(self) -> Dict[str, Type[BaseOperator]]:
-        """登録されているオペレーターの一覧を取得する。
+        # データベースをチェック
+        operator = self.db_session.query(Operator).filter_by(
+            name=operator_type,
+            is_active=True
+        ).first()
+
+        return operator is not None
+
+    def register_operator(self, operator_class: Type[BaseOperator], description: Optional[str] = None) -> None:
+        """オペレーターを登録する。
+
+        Args:
+            operator_class: 登録するオペレータークラス
+            description: オペレーターの説明
+        """
+        operator_type = operator_class.__name__
+        code = inspect.getsource(operator_class)
+        
+        # 既存のオペレーターを非アクティブ化
+        existing_operator = self.db_session.query(Operator).filter_by(name=operator_type).first()
+        if existing_operator:
+            existing_operator.is_active = False
+            self.db_session.flush()
+        
+        # 新しいオペレーターを登録
+        operator = Operator(
+            name=operator_type,
+            description=description,
+            code=code,
+            is_active=True
+        )
+        
+        self.db_session.add(operator)
+        self.db_session.commit()
+        
+        # キャッシュを更新
+        self._operator_cache[operator_type] = operator_class
+
+    def get_operator(self, operator_type: str) -> Optional[Type[BaseOperator]]:
+        """オペレーターを取得する。
+
+        Args:
+            operator_type: オペレータータイプ
 
         Returns:
-            オペレーターの一覧
+            オペレータークラス
         """
-        return self._operators.copy() 
+        # キャッシュをチェック
+        if operator_type in self._operator_cache:
+            return self._operator_cache[operator_type]
+
+        # データベースから取得
+        operator = self.db_session.query(Operator).filter_by(
+            name=operator_type,
+            is_active=True
+        ).first()
+
+        if operator:
+            operator_class = load_operator_from_code(operator.code)
+            self._operator_cache[operator_type] = operator_class
+            return operator_class
+
+        return None
+
+    def list_operators(self) -> List[Dict]:
+        """登録されているすべてのアクティブなオペレーターを取得する。
+
+        Returns:
+            オペレーター情報のリスト
+        """
+        operators = self.db_session.query(Operator).filter_by(is_active=True).all()
+        return [
+            {
+                'name': op.name,
+                'description': op.description,
+                'performance_metrics': json.loads(op.performance_metrics) if op.performance_metrics else None,
+                'created_at': op.created_at.isoformat(),
+                'updated_at': op.updated_at.isoformat()
+            }
+            for op in operators
+        ]
+
+    def deactivate_operator(self, operator_type: str) -> None:
+        """オペレーターを非アクティブ化する。
+
+        Args:
+            operator_type: オペレータータイプ
+        """
+        operator = self.db_session.query(Operator).filter_by(name=operator_type).first()
+        if operator:
+            operator.is_active = False
+            self.db_session.commit()
+            if operator_type in self._operator_cache:
+                del self._operator_cache[operator_type]
+
+    def update_performance_metrics(self, operator_type: str, metrics: Dict) -> None:
+        """オペレーターのパフォーマンスメトリクスを更新する。
+
+        Args:
+            operator_type: オペレータータイプ
+            metrics: パフォーマンスメトリクス
+        """
+        operator = self.db_session.query(Operator).filter_by(name=operator_type).first()
+        if operator:
+            operator.performance_metrics = json.dumps(metrics)
+            self.db_session.commit() 
