@@ -4,10 +4,12 @@ from uuid import uuid4
 import logging
 import time
 from datetime import datetime, timedelta
+from sqlalchemy.orm import Session
 
 from genesis_agi.llm.client import LLMClient
 from genesis_agi.operators import BaseOperator, Task
 from genesis_agi.utils.cache import Cache
+from genesis_agi.models.task_record import TaskRecord
 
 # ロガーの設定
 logger = logging.getLogger(__name__)
@@ -18,6 +20,7 @@ class TaskManager:
     def __init__(
         self,
         llm_client: LLMClient,
+        db_session: Session,
         cache: Optional[Cache] = None,
         objective: str = "タスクの生成と実行",
         max_consecutive_errors: int = 3,
@@ -30,6 +33,7 @@ class TaskManager:
 
         Args:
             llm_client: LLMクライアント
+            db_session: データベースセッション
             cache: キャッシュ
             objective: システムの目標
             max_consecutive_errors: 連続エラーの最大許容数
@@ -40,6 +44,7 @@ class TaskManager:
         """
         logger.info(f"TaskManagerを初期化: 目標「{objective}」")
         self.llm_client = llm_client
+        self.db_session = db_session
         self.cache = cache
         self.objective = objective
         self.operators: Dict[str, BaseOperator] = {}
@@ -84,6 +89,19 @@ class TaskManager:
         )
         self.current_tasks.append(task)
         logger.info(f"初期タスクを生成: ID={task.id}, 名前={task.name}")
+
+        # データベースに保存
+        task_record = TaskRecord(
+            task_id=task.id,
+            name=task.name,
+            description=task.description,
+            priority=task.priority,
+            task_metadata=task.metadata if task.metadata else None,
+            status="created"
+        )
+        self.db_session.add(task_record)
+        self.db_session.commit()
+
         return task
 
     def get_next_task(self) -> Optional[Task]:
@@ -126,7 +144,9 @@ class TaskManager:
                 # タイムアウトチェック
                 if time.time() - start_time > self.execution_timeout:
                     logger.warning(f"タスク実行がタイムアウトしました: {task.name}")
-                    return {"status": "timeout", "error": "実行時間が制限を超えました"}
+                    result = {"status": "timeout", "error": "実行時間が制限を超えました"}
+                    self._save_task_result(task, result)
+                    return result
                 
                 # タスクタイプに応じたオペレーターを選択
                 operator_type = self._get_operator_type(task)
@@ -157,6 +177,9 @@ class TaskManager:
                     "operator": operator_type,
                 })
 
+                # データベースに結果を保存
+                self._save_task_result(task, result, operator_type)
+
                 # 現在のタスクから削除
                 if task in self.current_tasks:
                     self.current_tasks.remove(task)
@@ -170,6 +193,8 @@ class TaskManager:
                 
                 if self.consecutive_errors >= self.max_consecutive_errors:
                     logger.error(f"連続エラーが制限を超えました: {self.consecutive_errors}回")
+                    error_result = {"status": "error", "error": "連続エラーが多すぎます"}
+                    self._save_task_result(task, error_result)
                     raise Exception("連続エラーが多すぎます")
                 
                 if retries <= self.max_retries:
@@ -178,9 +203,13 @@ class TaskManager:
                     time.sleep(wait_time)
                 else:
                     logger.error(f"リトライ回数が上限に達しました: {str(e)}")
+                    error_result = {"status": "error", "error": str(e)}
+                    self._save_task_result(task, error_result)
                     raise
 
-        return {"status": "error", "error": str(last_error)}
+        error_result = {"status": "error", "error": str(last_error)}
+        self._save_task_result(task, error_result)
+        return error_result
 
     def _wait_for_api_limit(self) -> None:
         """API呼び出し制限に基づいて待機する。"""
@@ -252,8 +281,11 @@ class TaskManager:
         logger.debug(f"優先順位付けタスクを作成: ID={prioritization_task.id}")
 
         # コンテキストの準備
-        context = self._prepare_context(operator.get_required_context())
-        context["task_list"] = self.current_tasks
+        context = {
+            "objective": self.objective,
+            "task_history": self.task_history,
+            "current_tasks": self.current_tasks
+        }
 
         # 優先順位付けの実行
         logger.debug("優先順位付けを実行中")
@@ -261,14 +293,17 @@ class TaskManager:
 
         # 優先順位の更新
         update_count = 0
-        for task_data in result.get("prioritized_tasks", []):
-            task_id = task_data.get("id")
-            new_priority = task_data.get("priority")
+        prioritized_tasks = result.get("prioritized_tasks", []) if isinstance(result, dict) else result
+        
+        for task_data in prioritized_tasks:
+            task_id = task_data.get("id") if isinstance(task_data, dict) else None
+            new_priority = task_data.get("priority") if isinstance(task_data, dict) else None
+            
             if task_id and new_priority is not None:
                 for task in self.current_tasks:
                     if task.id == task_id:
                         old_priority = task.priority
-                        task.priority = new_priority
+                        task.priority = float(new_priority)
                         logger.debug(f"タスク{task_id}の優先度を更新: {old_priority} → {new_priority}")
                         update_count += 1
                         break
@@ -349,3 +384,43 @@ class TaskManager:
                 context[key] = self.performance_metrics
 
         return context 
+
+    def _save_task_result(self, task: Task, result: Dict[str, Any], operator_type: Optional[str] = None) -> None:
+        """タスクの実行結果をデータベースに保存する。
+
+        Args:
+            task: タスク
+            result: 実行結果
+            operator_type: オペレータータイプ
+        """
+        try:
+            # 既存のタスクレコードを検索
+            task_record = self.db_session.query(TaskRecord).filter_by(task_id=task.id).first()
+            
+            if task_record:
+                # 既存のレコードを更新
+                task_record.status = result.get("status", "unknown")
+                task_record.result = result
+                task_record.operator = operator_type
+                task_record.updated_at = datetime.utcnow()
+            else:
+                # 新しいレコードを作成
+                task_record = TaskRecord(
+                    task_id=task.id,
+                    name=task.name,
+                    description=task.description,
+                    priority=task.priority,
+                    task_metadata=task.metadata if task.metadata else None,
+                    status=result.get("status", "unknown"),
+                    result=result,
+                    operator=operator_type
+                )
+                self.db_session.add(task_record)
+
+            self.db_session.commit()
+            logger.debug(f"タスク実行結果を保存: ID={task.id}, ステータス={result.get('status', 'unknown')}")
+
+        except Exception as e:
+            self.db_session.rollback()
+            logger.error(f"タスク実行結果の保存に失敗: {str(e)}")
+            raise 

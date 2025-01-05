@@ -1,5 +1,6 @@
 """LLMクライアント。"""
 from typing import Any, Dict, List, Optional, Union
+import json
 import logging
 import os
 from openai import OpenAI
@@ -77,6 +78,43 @@ class LLMClient:
         except Exception as e:
             logger.error(f"チャット補完の実行中にエラーが発生: {str(e)}")
             raise
+
+    def parse_json_response(self, response: ChatCompletion) -> Any:
+        """ChatCompletionのレスポンスからJSONデータを抽出する。
+
+        Args:
+            response: ChatCompletionのレスポンス
+
+        Returns:
+            パースされたJSONデータ
+        """
+        try:
+            content = response.choices[0].message.content
+            if not content:
+                return []
+            
+            # JSONデータを探す
+            start_idx = content.find("[")
+            end_idx = content.rfind("]")
+            
+            if start_idx == -1 or end_idx == -1:
+                # リストが見つからない場合は辞書を探す
+                start_idx = content.find("{")
+                end_idx = content.rfind("}")
+                
+                if start_idx == -1 or end_idx == -1:
+                    logger.warning("JSONデータが見つかりません")
+                    return []
+            
+            json_str = content[start_idx:end_idx + 1]
+            return json.loads(json_str)
+            
+        except json.JSONDecodeError as e:
+            logger.error(f"JSONのパースに失敗: {str(e)}")
+            return []
+        except Exception as e:
+            logger.error(f"レスポンスの処理中にエラーが発生: {str(e)}")
+            return []
 
     def _create_messages(self, system_content: str, user_content: str) -> List[ChatCompletionMessageParam]:
         """メッセージリストを作成する。

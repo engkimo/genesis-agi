@@ -1,0 +1,32 @@
+[
+  {
+    "id": "task-f63811e5-c75d-40d9-9dd6-2debbcc6262c",
+    "name": "開発計画の策定",
+    "description": "Webアプリケーションの開発計画を具体化し、目標達成に向けたスケジュールやタスク分担を決定する",
+    "priority": 1.0,
+    "metadata": {
+      "dependencies": [],
+      "estimated_time": "180",
+      "required_resources": [
+        "プロジェクト管理ツール",
+        "チームメンバーの協力"
+      ]
+    }
+  },
+  {
+    "id": "task-18e73ab4-c586-402c-8ad4-c27d35064146",
+    "name": "競合調査",
+    "description": "同様のWebアプリケーションを提供している競合他社の調査を行う",
+    "priority": 3.0,
+    "metadata": {
+      "dependencies": [
+        "task-60a235b2-5ed6-48b7-aa0f-6dada9dedda0"
+      ],
+      "estimated_time": "90",
+      "required_resources": [
+        "競合分析ツール",
+        "ウェブサイトの調査"
+      ]
+    }
+  }
+]

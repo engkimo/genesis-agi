@@ -1,0 +1,167 @@
+[
+  {
+    "task": {
+      "id": "task-f11c3c15-630c-4482-abc1-12f34a2357e1",
+      "name": "初期タスク",
+      "description": "目標「Webアプリケーションの開発計画を立てる」の達成に向けた初期タスクを生成する",
+      "priority": 1,
+      "metadata": {
+        "task_type": "creation"
+      }
+    },
+    "result": {
+      "status": "success",
+      "new_tasks": [
+        {
+          "id": "task-e17a5154-9a3f-4b10-91bc-707f12a9a45e",
+          "name": "要件定義の作成",
+          "description": "Webアプリケーションの開発計画を立てるために、要件定義を詳細に作成する",
+          "priority": 2,
+          "metadata": {
+            "dependencies": [
+              "task-f11c3c15-630c-4482-abc1-12f34a2357e1"
+            ],
+            "estimated_time": "120",
+            "required_resources": [
+              "プロジェクトメンバー",
+              "会議室"
+            ]
+          }
+        },
+        {
+          "id": "task-44a16246-bee2-4ccf-be4a-a5a73c8b4b1b",
+          "name": "技術検討会の開催",
+          "description": "Webアプリケーションの開発に使用する技術についてチームで検討するための会議を開催する",
+          "priority": 3,
+          "metadata": {
+            "dependencies": [
+              "task-f11c3c15-630c-4482-abc1-12f34a2357e1"
+            ],
+            "estimated_time": "90",
+            "required_resources": [
+              "技術リーダー",
+              "プロジェクトメンバー",
+              "会議室"
+            ]
+          }
+        }
+      ]
+    },
+    "operator": "TaskCreationOperator"
+  },
+  {
+    "task": {
+      "id": "task-ea33aeb4-6512-42b9-8cbd-f81daaf34841",
+      "name": "要件定義の作成",
+      "description": "Webアプリケーションの開発計画を立てるために、要件定義を詳細に作成する",
+      "priority": 2,
+      "metadata": {
+        "dependencies": [
+          "task-f11c3c15-630c-4482-abc1-12f34a2357e1"
+        ],
+        "estimated_time": "120",
+        "required_resources": [
+          "プロジェクトメンバー",
+          "会議室"
+        ]
+      }
+    },
+    "result": {
+      "status": "success",
+      "output": "Webアプリケーションの開発計画に向けた要件定義の作成が完了しました。詳細な要件定義が作成され、プロジェクトメンバーと会議室が必要であることが確認されました。",
+      "metrics": {
+        "execution_time": 120,
+        "resource_usage": "プロジェクトメンバー、会議室",
+        "quality_score": 0.95
+      }
+    },
+    "operator": "TaskExecutionOperator"
+  },
+  {
+    "task": {
+      "id": "task-0dd2e547-237f-4e85-aea6-23d6745b06ba",
+      "name": "技術検討会の開催",
+      "description": "Webアプリケーションの開発に使用する技術についてチームで検討するための会議を開催する",
+      "priority": 2.0,
+      "metadata": {
+        "dependencies": [
+          "task-f11c3c15-630c-4482-abc1-12f34a2357e1"
+        ],
+        "estimated_time": "90",
+        "required_resources": [
+          "技術リーダー",
+          "プロジェクトメンバー",
+          "会議室"
+        ]
+      }
+    },
+    "result": {
+      "status": "success",
+      "output": "技術検討会の開催が成功しました。Webアプリケーションの開発に使用する技術についてチームで検討するための会議が開催されました。",
+      "metrics": {
+        "execution_time": 90,
+        "resource_usage": "技術リーダー、プロジェクトメンバー、会議室",
+        "quality_score": 1.0
+      }
+    },
+    "operator": "TaskExecutionOperator"
+  },
+  {
+    "task": {
+      "id": "task-6656b4b0-7292-4dae-af74-b5bbbe37f7aa",
+      "name": "技術検討会の開催",
+      "description": "Webアプリケーションの開発に使用する技術についてチームで検討するための会議を開催する",
+      "priority": 3.0,
+      "metadata": {
+        "dependencies": [
+          "task-f11c3c15-630c-4482-abc1-12f34a2357e1"
+        ],
+        "estimated_time": "90",
+        "required_resources": [
+          "技術リーダー",
+          "プロジェクトメンバー",
+          "会議室"
+        ]
+      }
+    },
+    "result": {
+      "status": "success",
+      "output": "技術検討会の開催が成功しました。Webアプリケーションの開発に使用する技術についてチームで検討するための会議が開催されました。",
+      "metrics": {
+        "execution_time": 90,
+        "resource_usage": "技術リーダー、プロジェクトメンバー、会議室",
+        "quality_score": 1.0
+      }
+    },
+    "operator": "TaskExecutionOperator"
+  },
+  {
+    "task": {
+      "id": "task-2f3d4641-5251-429b-9007-71e5974c7f5e",
+      "name": "詳細設計の作成",
+      "description": "Webアプリケーションの開発計画を具体化するために、詳細設計を作成する",
+      "priority": 3.0,
+      "metadata": {
+        "dependencies": [
+          "task-0dd2e547-237f-4e85-aea6-23d6745b06ba"
+        ],
+        "estimated_time": "180",
+        "required_resources": [
+          "システムアーキテクト",
+          "プロジェクトメンバー",
+          "開発ツール"
+        ]
+      }
+    },
+    "result": {
+      "status": "success",
+      "output": "詳細設計の作成が完了しました。Webアプリケーションの開発計画を具体化するための詳細設計が作成されました。",
+      "metrics": {
+        "execution_time": 180,
+        "resource_usage": "システムアーキテクト、プロジェクトメンバー、開発ツール",
+        "quality_score": 0.9
+      }
+    },
+    "operator": "TaskExecutionOperator"
+  }
+]
