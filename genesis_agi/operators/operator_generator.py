@@ -183,10 +183,10 @@ class OperatorGenerator:
 
                 def execute(self) -> Dict[str, Any]:
                     try:
-                        logger.info("タスク {{}} の実行を開始".format(self.task_id))
+                        logger.info(f"タスク {self.task_id} の実行を開始")
                         
                         # 入力データの取得
-                        input_data = self.params.get("input_data", {})
+                        input_data = self.params.get("input_data", dict())
                         if not self.validate_input(input_data):
                             logger.error("入力データが不正です")
                             return self.prepare_result(None, status="error")
@@ -198,17 +198,17 @@ class OperatorGenerator:
                             return self.prepare_result(None, status="error")
                         
                         # 分析結果の生成
-                        self.analysis_results = {{
-                            "summary": "データ分析の結果をここに記述",
-                            "statistics": {{}},
-                            "visualizations": []
-                        }}
+                        self.analysis_results = dict(
+                            summary="データ分析の結果をここに記述",
+                            statistics=dict(),
+                            visualizations=[]
+                        )
                         
-                        logger.info("タスク {{}} の実行が完了".format(self.task_id))
+                        logger.info(f"タスク {self.task_id} の実行が完了")
                         return self.prepare_result(self.analysis_results)
                         
                     except Exception as e:
-                        logger.error("実行エラー: {{}}".format(str(e)))
+                        logger.error(f"実行エラー: {str(e)}")
                         return self.prepare_result(None, status="error")
 
                 def validate_input(self, input_data: Dict[str, Any]) -> bool:
