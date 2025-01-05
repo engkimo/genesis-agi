@@ -6,16 +6,43 @@ from abc import ABC, abstractmethod
 class BaseOperator(ABC):
     """全てのオペレーターの基底クラス。"""
 
-    @abstractmethod
-    def execute(self, task: Any, context: Dict[str, Any]) -> Dict[str, Any]:
-        """タスクを実行する。
+    def __init__(self, task_id: str, params: Dict[str, Any] = None):
+        """初期化。
 
         Args:
-            task: 実行するタスク
-            context: 実行コンテキスト
+            task_id: タスクの一意な識別子
+            params: オペレーターのパラメータ
+        """
+        self.task_id = task_id
+        self.params = params or {}
+
+    @abstractmethod
+    def execute(self) -> Dict[str, Any]:
+        """タスクを実行する。
 
         Returns:
             実行結果
+        """
+        pass
+
+    @abstractmethod
+    def validate_input(self, input_data: Dict[str, Any]) -> bool:
+        """入力データを検証する。
+
+        Args:
+            input_data: 検証する入力データ
+
+        Returns:
+            検証結果（True: 有効、False: 無効）
+        """
+        pass
+
+    @abstractmethod
+    def get_required_inputs(self) -> List[str]:
+        """必要な入力データのキーを取得する。
+
+        Returns:
+            必要な入力データのキーのリスト
         """
         pass
 
