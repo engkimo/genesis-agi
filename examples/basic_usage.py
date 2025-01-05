@@ -6,6 +6,8 @@ from datetime import datetime
 from pathlib import Path
 
 from dotenv import load_dotenv
+from sqlalchemy import create_engine
+from sqlalchemy.orm import sessionmaker
 
 from genesis_agi.llm.client import LLMClient
 from genesis_agi.operators.task_creation import TaskCreationOperator
@@ -13,6 +15,7 @@ from genesis_agi.operators.task_execution import TaskExecutionOperator
 from genesis_agi.operators.task_prioritization import TaskPrioritizationOperator
 from genesis_agi.task_manager import TaskManager
 from genesis_agi.utils.cache import Cache
+from genesis_agi.models.task_record import Base
 
 # 環境変数の読み込み
 load_dotenv()
@@ -23,6 +26,21 @@ logging.basicConfig(
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
 )
 logger = logging.getLogger(__name__)
+
+def setup_database():
+    """データベースの設定を行う。"""
+    database_url = os.getenv("DATABASE_URL")
+    if database_url is None:
+        raise ValueError("DATABASE_URLが設定されていません")
+    
+    engine = create_engine(database_url)
+    
+    # テーブルの作成
+    Base.metadata.create_all(engine)
+    
+    # セッションの作成
+    Session = sessionmaker(bind=engine)
+    return Session()
 
 def setup_logging():
     """ログの設定を行う。"""
@@ -104,16 +122,19 @@ def main():
         max_size=1000
     )
 
+    # データベースセッションの初期化
+    db_session = setup_database()
+
     # LLMクライアントの初期化
     llm_client = LLMClient(
         api_key=api_key,
-        model="gpt-3.5-turbo",
-        cache=cache,
+        model="gpt-3.5-turbo"
     )
 
     # タスクマネージャーの初期化
     task_manager = TaskManager(
         llm_client=llm_client,
+        db_session=db_session,
         cache=cache,
         objective="Webアプリケーションの開発計画を立てる",
     )
@@ -168,6 +189,7 @@ def main():
     finally:
         # クリーンアップ
         task_manager.cleanup()
+        db_session.close()
 
 if __name__ == "__main__":
     main()

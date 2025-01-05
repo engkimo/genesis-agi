@@ -76,7 +76,14 @@ class UnifiedManager:
 
         Returns:
             作成されたタスク
+
+        Raises:
+            ValueError: タスクの説明が無効な場合
+            RuntimeError: タスクの生成に失敗した場合
         """
+        if not task_description:
+            raise ValueError("タスクの説明が必要です")
+
         try:
             # タスクの分析とオペレータータイプの決定
             analysis = self.llm_client.analyze_task({
@@ -91,48 +98,74 @@ class UnifiedManager:
                 }
             })
 
+            if not analysis or "required_operator_type" not in analysis:
+                raise ValueError("タスクの分析に失敗しました")
+
             operator_type = analysis["required_operator_type"]
+            logger.info(f"必要なオペレータータイプ: {operator_type}")
 
             # 必要なオペレーターが存在しない場合は生成
             if not self.registry.has_operator(operator_type):
-                # 生成戦略の準備
-                generation_strategy = {
-                    "strategy_type": "adaptive",
-                    "parameters": {
-                        "task_description": task_description,
-                        "operator_type": operator_type,
-                        "complexity": analysis["required_params"].get("estimated_complexity", "medium"),
-                        "focus_areas": ["error_handling", "performance_optimization"]
+                logger.info(f"オペレーター '{operator_type}' が存在しないため、生成を開始します")
+                try:
+                    # 生成戦略の準備
+                    generation_strategy = {
+                        "strategy_type": "adaptive",
+                        "parameters": {
+                            "task_description": task_description,
+                            "operator_type": operator_type,
+                            "complexity": analysis["required_params"].get("estimated_complexity", "medium"),
+                            "focus_areas": ["error_handling", "performance_optimization"]
+                        }
                     }
-                }
 
-                # オペレーターの生成
-                operator_class = self.operator_generator.generate_operator(
-                    task_description,
-                    self.current_context,
-                    generation_strategy
-                )
-                self.registry.register_operator(operator_class)
+                    # オペレーターの生成
+                    operator_class = self.operator_generator.generate_operator(
+                        task_description,
+                        self.current_context,
+                        generation_strategy
+                    )
+                    logger.info(f"オペレーター '{operator_type}' を生成しました")
+
+                    # オペレーターの登録
+                    self.registry.register_operator(operator_class)
+                    logger.info(f"オペレーター '{operator_type}' を登録しました")
+
+                except Exception as e:
+                    error_msg = f"オペレーターの生成と登録に失敗: {str(e)}"
+                    logger.error(error_msg)
+                    raise RuntimeError(error_msg) from e
 
             # タスクの作成
-            task = self.create_task(
-                description=task_description,
-                task_type=operator_type,
-                params=analysis.get("required_params", {}),
-                priority=float(analysis["required_params"].get("priority", 1.0))
-            )
+            try:
+                task = self.create_task(
+                    description=task_description,
+                    task_type=operator_type,
+                    params=analysis.get("required_params", {}),
+                    priority=float(analysis["required_params"].get("priority", 1.0))
+                )
+                logger.info(f"タスクを作成しました: {task.id}")
+                return task
 
-            return task
+            except Exception as e:
+                error_msg = f"タスクの作成に失敗: {str(e)}"
+                logger.error(error_msg)
+                raise RuntimeError(error_msg) from e
 
         except Exception as e:
             logger.error(f"タスクの生成中にエラーが発生: {str(e)}")
             # エラー時のフォールバックタスクを作成
-            return self.create_task(
-                description=task_description,
-                task_type="DataAnalysisOperator",  # デフォルトのオペレーター
-                params={},
-                priority=1.0
-            )
+            try:
+                return self.create_task(
+                    description=task_description,
+                    task_type="DataAnalysisOperator",  # デフォルトのオペレーター
+                    params={},
+                    priority=1.0
+                )
+            except Exception as fallback_error:
+                error_msg = f"フォールバックタスクの作成にも失敗: {str(fallback_error)}"
+                logger.error(error_msg)
+                raise RuntimeError(error_msg) from fallback_error
 
     def execute_next_task(self) -> Optional[Dict[str, Any]]:
         """次のタスクを実行する。"""

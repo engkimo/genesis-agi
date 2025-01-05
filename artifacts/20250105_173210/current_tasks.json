@@ -1,0 +1,49 @@
+[
+  {
+    "id": "task-3e8615f5-7dbb-49e3-a2e6-eb824aa0836c",
+    "name": "要件定義の作成",
+    "description": "Webアプリケーションの開発計画を立てるために、要件定義を詳細に作成する",
+    "priority": 3.0,
+    "metadata": {
+      "dependencies": [
+        "task-f11c3c15-630c-4482-abc1-12f34a2357e1"
+      ],
+      "estimated_time": "120",
+      "required_resources": [
+        "プロジェクトメンバー",
+        "会議室"
+      ]
+    }
+  },
+  {
+    "id": "task-637a8df4-83e1-4749-8f75-5899bbcffd4d",
+    "name": "プロトタイプの開発",
+    "description": "Webアプリケーションの機能を実現するためのプロトタイプを開発する",
+    "priority": 1.0,
+    "metadata": {
+      "dependencies": [
+        "task-0dd2e547-237f-4e85-aea6-23d6745b06ba"
+      ],
+      "estimated_time": "240",
+      "required_resources": [
+        "フロントエンドエンジニア",
+        "バックエンドエンジニア",
+        "テスト環境"
+      ]
+    }
+  },
+  {
+    "id": "task-d5c26c1a-6659-47e1-857b-c1e8b2808e5d",
+    "name": "システムアーキテクトの選定",
+    "description": "Webアプリケーションの詳細設計に必要なシステムアーキテクトを選定する",
+    "priority": 2.0,
+    "metadata": {
+      "dependencies": [],
+      "estimated_time": "60",
+      "required_resources": [
+        "プロジェクトリーダー",
+        "人事担当者"
+      ]
+    }
+  }
+]

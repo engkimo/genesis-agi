@@ -47,7 +47,7 @@ class TaskCreationOperator(BaseOperator):
 目標: {objective}
 
 現在のタスク:
-{task.dict()}
+{task.model_dump()}
 
 タスク履歴:
 {task_history}
@@ -71,7 +71,7 @@ class TaskCreationOperator(BaseOperator):
         ]
 
         # タスクの生成
-        response = self.llm_client._call_openai(messages, temperature=0.7)
+        response = self.llm_client.chat_completion(messages, temperature=0.7)
         tasks_data = self.llm_client.parse_json_response(response)
 
         # タスクオブジェクトの作成
@@ -82,7 +82,7 @@ class TaskCreationOperator(BaseOperator):
 
         return {
             "status": "success",
-            "new_tasks": [task.dict() for task in new_tasks],
+            "new_tasks": [task.model_dump() for task in new_tasks],
         }
 
     def validate(self, task: Task) -> bool:
@@ -94,7 +94,7 @@ class TaskCreationOperator(BaseOperator):
         Returns:
             実行可能な場合はTrue
         """
-        return task.metadata is not None and "task_type" in task.metadata
+        return True
 
     def get_required_context(self) -> List[str]:
         """実行に必要なコンテキストのキーリストを取得する。
@@ -102,4 +102,4 @@ class TaskCreationOperator(BaseOperator):
         Returns:
             必要なコンテキストのキーリスト
         """
-        return ["task_history", "objective"] 
+        return ["objective", "task_history"] 

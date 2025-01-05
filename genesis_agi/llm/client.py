@@ -1,5 +1,6 @@
 """LLMクライアント。"""
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Union
+import json
 import logging
 import os
 from openai import OpenAI
@@ -28,6 +29,92 @@ class LLMClient:
         if api_key:
             os.environ["OPENAI_API_KEY"] = api_key
         self.client = OpenAI()
+
+    def chat_completion(
+        self,
+        messages: List[Dict[str, str]],
+        temperature: float = 0.7,
+        max_tokens: Optional[int] = None
+    ) -> ChatCompletion:
+        """ChatGPT APIを使用してチャット補完を実行する。
+
+        Args:
+            messages: メッセージリスト
+            temperature: 温度パラメータ
+            max_tokens: 最大トークン数
+
+        Returns:
+            ChatCompletion
+        """
+        try:
+            # メッセージの型を変換
+            formatted_messages: List[ChatCompletionMessageParam] = []
+            for msg in messages:
+                if msg["role"] == "system":
+                    formatted_messages.append(
+                        ChatCompletionSystemMessageParam(
+                            role="system",
+                            content=msg["content"]
+                        )
+                    )
+                elif msg["role"] == "user":
+                    formatted_messages.append(
+                        ChatCompletionUserMessageParam(
+                            role="user",
+                            content=msg["content"]
+                        )
+                    )
+
+            # APIリクエストを実行
+            response = self.client.chat.completions.create(
+                model=self.model,
+                messages=formatted_messages,
+                temperature=temperature,
+                max_tokens=max_tokens if max_tokens is not None else None
+            )
+            
+            return response
+
+        except Exception as e:
+            logger.error(f"チャット補完の実行中にエラーが発生: {str(e)}")
+            raise
+
+    def parse_json_response(self, response: ChatCompletion) -> Any:
+        """ChatCompletionのレスポンスからJSONデータを抽出する。
+
+        Args:
+            response: ChatCompletionのレスポンス
+
+        Returns:
+            パースされたJSONデータ
+        """
+        try:
+            content = response.choices[0].message.content
+            if not content:
+                return []
+            
+            # JSONデータを探す
+            start_idx = content.find("[")
+            end_idx = content.rfind("]")
+            
+            if start_idx == -1 or end_idx == -1:
+                # リストが見つからない場合は辞書を探す
+                start_idx = content.find("{")
+                end_idx = content.rfind("}")
+                
+                if start_idx == -1 or end_idx == -1:
+                    logger.warning("JSONデータが見つかりません")
+                    return []
+            
+            json_str = content[start_idx:end_idx + 1]
+            return json.loads(json_str)
+            
+        except json.JSONDecodeError as e:
+            logger.error(f"JSONのパースに失敗: {str(e)}")
+            return []
+        except Exception as e:
+            logger.error(f"レスポンスの処理中にエラーが発生: {str(e)}")
+            return []
 
     def _create_messages(self, system_content: str, user_content: str) -> List[ChatCompletionMessageParam]:
         """メッセージリストを作成する。

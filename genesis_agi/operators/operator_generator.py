@@ -40,44 +40,69 @@ class OperatorGenerator:
 
         Returns:
             生成されたオペレータークラス
+
+        Raises:
+            ValueError: タスクの説明が無効な場合
+            RuntimeError: オペレーターの生成に失敗した場合
         """
-        # キャッシュをチェック
-        cache_key = f"operator:{task_description}"
-        if self.cache:
-            cached_operator = self._load_from_cache(cache_key)
-            if cached_operator:
-                return cached_operator
+        if not task_description:
+            raise ValueError("タスクの説明が必要です")
 
-        # オペレータータイプを生成
-        operator_type = self._generate_operator_type(task_description)
+        try:
+            # キャッシュをチェック
+            cache_key = f"operator:{task_description}"
+            if self.cache:
+                cached_operator = self._load_from_cache(cache_key)
+                if cached_operator:
+                    logger.info(f"キャッシュからオペレーターを読み込みました: {cached_operator.__name__}")
+                    return cached_operator
 
-        # 既存のオペレーターをチェック
-        if self.registry.has_operator(operator_type):
-            existing_operator = self.registry.get_operator(operator_type)
-            if existing_operator:
-                return existing_operator
+            # オペレータータイプを生成
+            operator_type = self._generate_operator_type(task_description)
+            logger.debug(f"生成されたオペレータータイプ: {operator_type}")
 
-        # オペレーターコードを生成
-        operator_code = self._generate_operator_code(
-            task_description,
-            current_context,
-            generation_strategy
-        )
+            # 既存のオペレーターをチェック
+            if self.registry.has_operator(operator_type):
+                existing_operator = self.registry.get_operator(operator_type)
+                if existing_operator:
+                    logger.info(f"既存のオペレーターを使用: {operator_type}")
+                    return existing_operator
 
-        # オペレータークラスを動的に生成
-        operator_class = self._create_operator_class(operator_code)
+            # オペレーターコードを生成
+            operator_code = self._generate_operator_code(
+                task_description,
+                current_context,
+                generation_strategy
+            )
+            logger.debug("オペレーターコードを生成しました")
 
-        # オペレーターを登録
-        self.registry.register_operator(
-            operator_class,
-            description=task_description
-        )
+            # オペレータークラスを動的に生成
+            operator_class = self._create_operator_class(operator_code)
+            if not operator_class:
+                raise RuntimeError("オペレータークラスの生成に失敗しました")
 
-        # キャッシュに保存
-        if self.cache:
-            self._save_to_cache(cache_key, operator_class)
+            # オペレーターを登録
+            try:
+                self.registry.register_operator(
+                    operator_class,
+                    description=task_description
+                )
+                logger.info(f"新しいオペレーターを登録しました: {operator_type}")
+            except Exception as e:
+                logger.error(f"オペレーターの登録に失敗: {str(e)}")
+                raise RuntimeError(f"オペレーターの登録に失敗: {str(e)}") from e
 
-        return operator_class
+            # キャッシュに保存
+            if self.cache:
+                self._save_to_cache(cache_key, operator_class)
+                logger.debug(f"オペレーターをキャッシュに保存: {operator_type}")
+
+            return operator_class
+
+        except Exception as e:
+            error_msg = f"オペレーターの生成に失敗: {str(e)}"
+            logger.error(error_msg)
+            raise RuntimeError(error_msg) from e
 
     def _generate_operator_type(self, task_description: str) -> str:
         """タスクの説明からオペレータータイプを生成する。
@@ -139,6 +164,62 @@ class OperatorGenerator:
             3. エラーハンドリングを適切に行うこと
             4. ログ出力を適切に行うこと
             5. 型ヒントを使用すること
+            6. __init__メソッドでtask_idとparamsを受け取り、super().__init__()を呼び出すこと
+
+            以下のテンプレートに従ってください：
+
+            '''
+            from typing import Any, Dict, List
+            import logging
+            from genesis_agi.operators.base_operator import BaseOperator
+
+            logger = logging.getLogger(__name__)
+
+            class DataAnalysisOperator(BaseOperator):
+                def __init__(self, task_id: str, params: Dict[str, Any] = None):
+                    super().__init__(task_id, params)
+                    self.data = None
+                    self.analysis_results = dict()
+
+                def execute(self) -> Dict[str, Any]:
+                    try:
+                        logger.info(f"タスク {self.task_id} の実行を開始")
+                        
+                        # 入力データの取得
+                        input_data = self.params.get("input_data", dict())
+                        if not self.validate_input(input_data):
+                            logger.error("入力データが不正です")
+                            return self.prepare_result(None, status="error")
+                        
+                        # データの分析
+                        self.data = input_data.get("dataset")
+                        if self.data is None:
+                            logger.error("データセットが見つかりません")
+                            return self.prepare_result(None, status="error")
+                        
+                        # 分析結果の生成
+                        self.analysis_results = dict(
+                            summary="データ分析の結果をここに記述",
+                            statistics=dict(),
+                            visualizations=[]
+                        )
+                        
+                        logger.info(f"タスク {self.task_id} の実行が完了")
+                        return self.prepare_result(self.analysis_results)
+                        
+                    except Exception as e:
+                        logger.error(f"実行エラー: {str(e)}")
+                        return self.prepare_result(None, status="error")
+
+                def validate_input(self, input_data: Dict[str, Any]) -> bool:
+                    required_inputs = self.get_required_inputs()
+                    return all(key in input_data for key in required_inputs)
+
+                def get_required_inputs(self) -> List[str]:
+                    return ["dataset", "analysis_type", "visualization_options"]
+            '''
+
+            上記のテンプレートを参考に、与えられたタスクに適したオペレーターを生成してください。
             """}
         ]
         

@@ -1,0 +1,157 @@
+[
+  {
+    "task": {
+      "id": "task-60a235b2-5ed6-48b7-aa0f-6dada9dedda0",
+      "name": "初期タスク",
+      "description": "目標「Webアプリケーションの開発計画を立てる」の達成に向けた初期タスクを生成する",
+      "priority": 1,
+      "metadata": {
+        "task_type": "creation"
+      }
+    },
+    "result": {
+      "status": "success",
+      "new_tasks": [
+        {
+          "id": "task-aa679377-7971-45f8-9704-3ba5071335ca",
+          "name": "顧客ニーズの調査",
+          "description": "Webアプリケーションの開発計画を立てるために顧客ニーズを調査する",
+          "priority": 2,
+          "metadata": {
+            "dependencies": [],
+            "estimated_time": "120",
+            "required_resources": [
+              "アンケートツール",
+              "顧客インタビューの予定"
+            ]
+          }
+        },
+        {
+          "id": "task-0e26d3eb-7aee-4361-8fd6-a34e16d41290",
+          "name": "競合調査",
+          "description": "同様のWebアプリケーションを提供している競合他社の調査を行う",
+          "priority": 3,
+          "metadata": {
+            "dependencies": [
+              "task-60a235b2-5ed6-48b7-aa0f-6dada9dedda0"
+            ],
+            "estimated_time": "90",
+            "required_resources": [
+              "競合分析ツール",
+              "ウェブサイトの調査"
+            ]
+          }
+        }
+      ]
+    },
+    "operator": "TaskCreationOperator"
+  },
+  {
+    "task": {
+      "id": "task-34a68627-59c6-459d-bbbc-c20b668059ec",
+      "name": "競合調査",
+      "description": "同様のWebアプリケーションを提供している競合他社の調査を行う",
+      "priority": 3.0,
+      "metadata": {
+        "dependencies": [
+          "task-60a235b2-5ed6-48b7-aa0f-6dada9dedda0"
+        ],
+        "estimated_time": "90",
+        "required_resources": [
+          "競合分析ツール",
+          "ウェブサイトの調査"
+        ]
+      }
+    },
+    "result": {
+      "status": "success",
+      "output": "競合調査を完了しました。同様のWebアプリケーションを提供している競合他社の調査を行いました。",
+      "metrics": {
+        "execution_time": 2700,
+        "resource_usage": "低",
+        "quality_score": 0.85
+      }
+    },
+    "operator": "TaskExecutionOperator"
+  },
+  {
+    "task": {
+      "id": "task-c3b086b9-fc53-4b2d-864b-cb1e6a6f99b8",
+      "name": "顧客ニーズの調査",
+      "description": "Webアプリケーションの開発計画を立てるために顧客ニーズを調査する",
+      "priority": 3.0,
+      "metadata": {
+        "dependencies": [],
+        "estimated_time": "120",
+        "required_resources": [
+          "アンケートツール",
+          "顧客インタビューの予定"
+        ]
+      }
+    },
+    "result": {
+      "status": "success",
+      "output": "顧客ニーズの調査を完了しました。Webアプリケーションの開発計画を立てるために顧客ニーズを調査しました。",
+      "metrics": {
+        "execution_time": 120,
+        "resource_usage": "低",
+        "quality_score": 0.9
+      }
+    },
+    "operator": "TaskExecutionOperator"
+  },
+  {
+    "task": {
+      "id": "task-00cf086b-10c1-415e-b264-6fc5f8a4b3dd",
+      "name": "競合調査",
+      "description": "同様のWebアプリケーションを提供している競合他社の調査を行う",
+      "priority": 3,
+      "metadata": {
+        "dependencies": [
+          "task-60a235b2-5ed6-48b7-aa0f-6dada9dedda0"
+        ],
+        "estimated_time": "90",
+        "required_resources": [
+          "競合分析ツール",
+          "ウェブサイトの調査"
+        ]
+      }
+    },
+    "result": {
+      "status": "success",
+      "output": "競合調査を完了しました。同様のWebアプリケーションを提供している競合他社の調査を行いました。",
+      "metrics": {
+        "execution_time": 2700,
+        "resource_usage": "低",
+        "quality_score": 0.85
+      }
+    },
+    "operator": "TaskExecutionOperator"
+  },
+  {
+    "task": {
+      "id": "task-bb54b5c3-2537-478d-82c5-0f49e487c387",
+      "name": "顧客ニーズの調査",
+      "description": "Webアプリケーションの開発計画を立てるために顧客ニーズを調査する",
+      "priority": 2.0,
+      "metadata": {
+        "dependencies": [],
+        "estimated_time": "120",
+        "required_resources": [
+          "アンケートツール",
+          "顧客インタビューの予定"
+        ]
+      }
+    },
+    "result": {
+      "status": "success",
+      "output": "顧客ニーズの調査を完了しました。Webアプリケーションの開発計画を立てるために顧客ニーズを調査しました。",
+      "metrics": {
+        "execution_time": 120,
+        "resource_usage": "低",
+        "quality_score": 0.9
+      }
+    },
+    "operator": "TaskExecutionOperator"
+  }
+]
